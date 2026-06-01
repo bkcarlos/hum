@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/logo-wordmark.svg" alt="Hum · 哼一首" width="300">
+</p>
+
 # Hum · 哼一首
 
 > 哼一段说不出名字的调子，它帮你找到真实的歌。

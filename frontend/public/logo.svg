@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hum">
+  <defs>
+    <linearGradient id="humGrad" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF3D6E"/>
+      <stop offset="1" stop-color="#FF7A3D"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#humGrad)"/>
+  <!-- hum waveform: rounded bars swelling toward the centre -->
+  <g fill="#FFFFFF">
+    <rect x="108" y="216" width="40" height="80"  rx="20"/>
+    <rect x="172" y="168" width="40" height="176" rx="20"/>
+    <rect x="236" y="128" width="40" height="256" rx="20"/>
+    <rect x="300" y="168" width="40" height="176" rx="20"/>
+    <rect x="364" y="216" width="40" height="80"  rx="20"/>
+  </g>
+</svg>

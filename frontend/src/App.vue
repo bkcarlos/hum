@@ -35,7 +35,7 @@ const themeOverrides: GlobalThemeOverrides = {
     <div class="app">
       <header class="topbar">
         <div class="brand">
-          <span class="logo">🎧</span>
+          <img class="logo" src="/logo.svg" alt="Hum" width="36" height="36" />
           <div>
             <div class="name">Hum</div>
             <div class="tagline">哼一首 · 用自然语言，从 Apple Music 挑歌建单</div>
@@ -101,7 +101,10 @@ const themeOverrides: GlobalThemeOverrides = {
   gap: 10px;
 }
 .logo {
-  font-size: 22px;
+  width: 36px;
+  height: 36px;
+  display: block;
+  border-radius: 9px;
 }
 .name {
   font-weight: 700;
