@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { NButton, NInput, NScrollbar, NSpace, NSpin, NTag, NText } from 'naive-ui'
+import { NButton, NInput, NScrollbar, NSpin, NText } from 'naive-ui'
 import IntentChips from './IntentChips.vue'
 import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
@@ -12,13 +12,6 @@ const rec = useRecommendation()
 
 const input = ref('')
 const seeds = ref('')
-
-const moodTags = ['雨天慵懒', '深夜 emo', '元气满满', '专注工作', '派对热闹', '失恋疗伤']
-const sceneTags = ['加班', '健身', '通勤', '咖啡馆', '睡前', '开车']
-
-function appendTag(t: string) {
-  input.value = input.value ? `${input.value} ${t}` : t
-}
 
 function send() {
   const text = input.value.trim()
@@ -48,21 +41,9 @@ function onKeydown(e: KeyboardEvent) {
     </header>
 
     <n-scrollbar class="stream">
-      <!-- Empty state: quick-start tags to break the blank page (F2) -->
+      <!-- Empty state: a short example to break the blank page (F2) -->
       <div v-if="!convo.messages.length" class="welcome">
         <p>用自然语言描述你想听的，比如“适合雨天加班的慵懒爵士，别太吵”。</p>
-        <div class="tagset">
-          <n-text depth="3" class="tl">心情</n-text>
-          <n-space size="small" :wrap="true">
-            <n-tag v-for="t in moodTags" :key="t" checkable @click="appendTag(t)">{{ t }}</n-tag>
-          </n-space>
-        </div>
-        <div class="tagset">
-          <n-text depth="3" class="tl">场景</n-text>
-          <n-space size="small" :wrap="true">
-            <n-tag v-for="t in sceneTags" :key="t" checkable @click="appendTag(t)">{{ t }}</n-tag>
-          </n-space>
-        </div>
       </div>
 
       <div v-for="m in convo.messages" :key="m.id" class="msg" :class="m.role">
@@ -137,17 +118,6 @@ function onKeydown(e: KeyboardEvent) {
 }
 .welcome p {
   margin-top: 4px;
-}
-.tagset {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 10px 0;
-}
-.tl {
-  flex: 0 0 36px;
-  font-size: 12px;
-  line-height: 24px;
 }
 .msg {
   display: flex;
