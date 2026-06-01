@@ -35,12 +35,21 @@ type TokenManager struct {
 
 // NewTokenManager loads the ES256 private key from a .p8 (PKCS#8 PEM) file.
 func NewTokenManager(teamID, keyID, privateKeyPath string, ttl time.Duration) (*TokenManager, error) {
-	if teamID == "" || keyID == "" || privateKeyPath == "" {
-		return nil, fmt.Errorf("applemusic: teamID, keyID and privateKeyPath are all required")
+	if privateKeyPath == "" {
+		return nil, fmt.Errorf("applemusic: privateKeyPath is required")
 	}
 	pemBytes, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("applemusic: reading private key: %w", err)
+	}
+	return NewTokenManagerFromPEM(teamID, keyID, pemBytes, ttl)
+}
+
+// NewTokenManagerFromPEM builds a manager from raw .p8 (PKCS#8 PEM) bytes —
+// used when the key is injected via an env var on a cloud host.
+func NewTokenManagerFromPEM(teamID, keyID string, pemBytes []byte, ttl time.Duration) (*TokenManager, error) {
+	if teamID == "" || keyID == "" {
+		return nil, fmt.Errorf("applemusic: teamID and keyID are required")
 	}
 	key, err := parseP8(pemBytes)
 	if err != nil {

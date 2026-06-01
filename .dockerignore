@@ -1,0 +1,21 @@
+# Keep the build context small and never ship secrets into the image.
+.git
+.gitignore
+**/node_modules
+frontend/dist
+frontend/.vite
+backend/bin
+backend/server
+
+# Secrets & local env (injected at runtime instead)
+*.p8
+**/.env
+**/.env.local
+secrets/
+
+# Docs / misc not needed at build time
+*.md
+docs/
+Makefile
+*.log
+.DS_Store

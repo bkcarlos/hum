@@ -87,6 +87,52 @@ cd backend && go build ./... && go test ./...
 cd frontend && npm run type-check && npm run build
 ```
 
+## 部署（方案 1 · 单服务）
+
+一个 Docker 镜像搞定：Node 阶段构建前端，Go 阶段编译静态二进制，最终镜像里**一个 Go 进程同时托管**前端静态文件（`WEB_DIR=/app/web`）和 `/api`。**同源，无需 CORS**。
+
+本地跑"生产形态"自测：
+```bash
+cd frontend && npm run build && cd ..
+WEB_DIR="$PWD/frontend/dist" GIN_MODE=release PORT=8080 go -C backend run ./cmd/server
+# 打开 http://localhost:8080 —— 前端与 API 同源
+```
+
+构建并运行镜像：
+```bash
+docker build -t hum .
+docker run -p 8080:8080 \
+  -e APPLE_TEAM_ID=XXXX -e APPLE_KEY_ID=YYYY \
+  -e APPLE_PRIVATE_KEY="$(cat AuthKey_YYYY.p8)" \
+  hum
+```
+
+**运行时需在平台 Secret/Env 配置：**
+
+| 变量 | 说明 |
+|------|------|
+| `APPLE_TEAM_ID` / `APPLE_KEY_ID` | Apple 开发者凭证 |
+| `APPLE_PRIVATE_KEY` | .p8 的 PEM 内容（云平台用它，而非文件路径） |
+| `CORS_ALLOWED_ORIGINS` | 单服务可不设（同源）；前后端分离时设为前端域名 |
+
+`WEB_DIR` / `GIN_MODE` / `PORT` 镜像已设好；多数平台会注入自己的 `PORT`，服务已自动遵循。HTTPS 由平台提供（MusicKit JS 与 key 传输都强制要求）。
+
+### 平台对比（跑这个单容器 · 个人自用）
+
+| 平台 | 成本 / 免费档 | 冷启动 | 部署方式 | 备注 |
+|------|--------------|--------|----------|------|
+| **Render** | 有免费档；付费 Starter ~$7/月 | 免费档闲置 ~15 分钟休眠，**冷启动 30–60s** | 连 GitHub 自动部署 / Dockerfile | 最省心；免费档冷启动会拖慢首个请求，建议付费档常驻 |
+| **Railway** | 无长期免费，约 $5/月用量额度起 | 基本常驻（按用量计费） | 连 GitHub / Dockerfile / Nixpacks | DX 最佳，小额可预期；适合"花点小钱省事" |
+| **Fly.io** | 按量计费，可缩到 0 | 唤醒**冷启动数秒**（比 Render 快） | `flyctl` + Dockerfile（`fly.toml`） | **可选区域**（东京/香港/新加坡等）→ 亚洲延迟更好；偏运维 |
+| **Cloud Run** | 免费额度大（个人自用大概率覆盖），缩到 0 | Go 小镜像**冷启动 ~1–3s**；可设 `min-instances=1` 免冷启动 | `gcloud` / Cloud Build + Dockerfile | 最省钱、冷启动最快；GCP 初始配置略多 |
+
+**怎么选：**
+- 图省心、能接受小额月费 → **Railway**（DX 最好）或 **Render**（付费档常驻）
+- 想最省钱 / 缩到 0 且冷启动要快 → **Cloud Run**
+- 在意亚洲访问延迟、想指定区域 → **Fly.io**（选东京/香港节点）
+
+> 注意：① 本应用首个请求会触发两次 LLM + 一次检索（目标 < 8s），所以**冷启动越短越好**——这点 Cloud Run / Fly 优于 Render 免费档。② 各家定价与免费政策时常变动，以官网为准。③ 若从中国大陆访问，几家平台连通性都可能有波动，必要时自备可达的域名/线路。
+
 ## 安全要点（BYOK · 方案 B）
 
 - 用户 LLM Key 仅存浏览器 localStorage；调用时随 `X-LLM-Api-Key` 头发给后端

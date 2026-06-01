@@ -19,7 +19,8 @@ type Config struct {
 	// Apple Music developer credentials (used to mint the Developer Token).
 	AppleTeamID         string
 	AppleKeyID          string
-	ApplePrivateKeyPath string
+	ApplePrivateKeyPath string // path to the .p8 file (local/dev)
+	ApplePrivateKey     string // OR the .p8 PEM contents directly (cloud env var)
 	AppleTokenTTL       time.Duration
 
 	// Apple Music API base (override for testing / regional proxies).
@@ -29,6 +30,10 @@ type Config struct {
 	Port                string
 	CORSAllowedOrigins  []string
 	UpstreamHTTPTimeout time.Duration
+
+	// WebDir, when set, makes the server also serve the built frontend from this
+	// directory (single-service / 方案 1). Empty in dev (Vite serves the SPA).
+	WebDir string
 
 	// Catalog search result cache lifetime (0 disables caching).
 	SearchCacheTTL time.Duration
@@ -45,11 +50,13 @@ func Load() (*Config, error) {
 		AppleTeamID:         os.Getenv("APPLE_TEAM_ID"),
 		AppleKeyID:          os.Getenv("APPLE_KEY_ID"),
 		ApplePrivateKeyPath: os.Getenv("APPLE_PRIVATE_KEY_PATH"),
+		ApplePrivateKey:     os.Getenv("APPLE_PRIVATE_KEY"),
 		AppleTokenTTL:       time.Duration(envInt("APPLE_TOKEN_TTL_HOURS", 4320)) * time.Hour,
 		AppleAPIBase:        envStr("APPLE_API_BASE", "https://api.music.apple.com"),
 		Port:                envStr("PORT", "8080"),
 		CORSAllowedOrigins:  splitCSV(envStr("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
 		UpstreamHTTPTimeout: time.Duration(envInt("UPSTREAM_TIMEOUT_SECONDS", 30)) * time.Second,
+		WebDir:              os.Getenv("WEB_DIR"),
 		SearchCacheTTL:      time.Duration(envInt("SEARCH_CACHE_TTL_SECONDS", 600)) * time.Second,
 	}
 	return cfg, nil
@@ -57,7 +64,21 @@ func Load() (*Config, error) {
 
 // AppleConfigured reports whether the Apple Developer Token can be minted.
 func (c *Config) AppleConfigured() bool {
-	return c.AppleTeamID != "" && c.AppleKeyID != "" && c.ApplePrivateKeyPath != ""
+	return c.AppleTeamID != "" && c.AppleKeyID != "" && (c.ApplePrivateKey != "" || c.ApplePrivateKeyPath != "")
+}
+
+// ApplePrivateKeyPEM returns the .p8 PEM bytes from APPLE_PRIVATE_KEY (preferred
+// on cloud hosts) or, failing that, from the file at APPLE_PRIVATE_KEY_PATH.
+// A literal "\n"-escaped env value (common when pasting a key into a dashboard)
+// is unescaped; a genuine multi-line PEM is unaffected.
+func (c *Config) ApplePrivateKeyPEM() ([]byte, error) {
+	if c.ApplePrivateKey != "" {
+		return []byte(strings.ReplaceAll(c.ApplePrivateKey, `\n`, "\n")), nil
+	}
+	if c.ApplePrivateKeyPath != "" {
+		return os.ReadFile(c.ApplePrivateKeyPath)
+	}
+	return nil, fmt.Errorf("config: no Apple private key (set APPLE_PRIVATE_KEY or APPLE_PRIVATE_KEY_PATH)")
 }
 
 func envStr(key, def string) string {
@@ -116,6 +137,6 @@ func loadDotEnv(path string) {
 
 // String renders a redacted summary safe for logging (no secrets present anyway).
 func (c *Config) String() string {
-	return fmt.Sprintf("Config{port=%s, appleConfigured=%t, origins=%v, ttl=%s}",
-		c.Port, c.AppleConfigured(), c.CORSAllowedOrigins, c.AppleTokenTTL)
+	return fmt.Sprintf("Config{port=%s, appleConfigured=%t, serveFrontend=%t, origins=%v, ttl=%s}",
+		c.Port, c.AppleConfigured(), c.WebDir != "", c.CORSAllowedOrigins, c.AppleTokenTTL)
 }

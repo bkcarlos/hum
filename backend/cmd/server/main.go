@@ -5,7 +5,11 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -40,9 +44,11 @@ func main() {
 		apple  handlers.AppleService
 	)
 	if cfg.AppleConfigured() {
-		tokens, err = applemusic.NewTokenManager(cfg.AppleTeamID, cfg.AppleKeyID, cfg.ApplePrivateKeyPath, cfg.AppleTokenTTL)
-		if err != nil {
-			slog.Warn("Apple Music disabled: could not load developer key", "err", err)
+		pem, perr := cfg.ApplePrivateKeyPEM()
+		if perr != nil {
+			slog.Warn("Apple Music disabled: cannot read private key", "err", perr)
+		} else if tokens, err = applemusic.NewTokenManagerFromPEM(cfg.AppleTeamID, cfg.AppleKeyID, pem, cfg.AppleTokenTTL); err != nil {
+			slog.Warn("Apple Music disabled: invalid developer key", "err", err)
 		} else {
 			apple = applemusic.NewClient(tokens, cfg.UpstreamHTTPTimeout, cfg.AppleAPIBase, cfg.SearchCacheTTL)
 			slog.Info("Apple Music enabled")
@@ -81,10 +87,37 @@ func main() {
 		api.POST("/rank", h.Rank)
 	}
 
+	// 方案 1 (single-service): also serve the built frontend from WebDir with SPA
+	// fallback. Same-origin, so no CORS is involved in production. Empty in dev.
+	if cfg.WebDir != "" {
+		registerFrontend(r, cfg.WebDir)
+		slog.Info("serving frontend", "dir", cfg.WebDir)
+	}
+
 	addr := ":" + cfg.Port
 	slog.Info("server starting", "addr", addr, "config", cfg.String())
 	if err := r.Run(addr); err != nil {
 		slog.Error("server stopped", "err", err)
 		os.Exit(1)
 	}
+}
+
+// registerFrontend serves the built SPA from dir for any non-/api route,
+// falling back to index.html for client-side routes. Cleaning the request path
+// against root before joining prevents directory traversal outside dir.
+func registerFrontend(r *gin.Engine, dir string) {
+	index := filepath.Join(dir, "index.html")
+	r.NoRoute(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if strings.HasPrefix(p, "/api") {
+			httpx.Fail(c, http.StatusNotFound, "not_found", "未知接口。")
+			return
+		}
+		full := filepath.Join(dir, filepath.FromSlash(path.Clean("/"+p)))
+		if info, err := os.Stat(full); err == nil && !info.IsDir() {
+			c.File(full)
+			return
+		}
+		c.File(index) // SPA fallback
+	})
 }
