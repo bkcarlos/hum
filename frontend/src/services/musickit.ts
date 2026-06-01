@@ -32,7 +32,7 @@ export async function ensureMusicKit(): Promise<MusicKitInstance> {
     return window.MusicKit.configure({
       developerToken: token,
       app: {
-        name: import.meta.env.VITE_APP_NAME ?? 'AI 歌单助手',
+        name: import.meta.env.VITE_APP_NAME ?? 'Hum',
         build: import.meta.env.VITE_APP_BUILD ?? '0.5.0',
       },
     })

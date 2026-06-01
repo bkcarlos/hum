@@ -37,8 +37,8 @@ const themeOverrides: GlobalThemeOverrides = {
         <div class="brand">
           <span class="logo">🎧</span>
           <div>
-            <div class="name">AI 歌单助手</div>
-            <div class="tagline">用自然语言，从 Apple Music 真实曲库挑歌建单</div>
+            <div class="name">Hum</div>
+            <div class="tagline">哼一首 · 用自然语言，从 Apple Music 挑歌建单</div>
           </div>
         </div>
         <div class="actions">

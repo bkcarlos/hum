@@ -1,6 +1,9 @@
-# AI 歌单助手 · Apple Music
+# Hum · 哼一首
+
+> 哼一段说不出名字的调子，它帮你找到真实的歌。
 
 用自然语言描述心情/场景，让 LLM 从 **Apple Music 真实曲库** 里挑歌、试听、并一键建成歌单。
+（"Hum" 为项目代号；内部仓库目录仍为 `apple_music_llm`，对外品牌请勿使用 "Apple Music" 商标。）
 
 > 黄金原则：**LLM 不产歌，只懂人与排序**。歌曲事实层全部来自 Apple Music 官方 API，LLM 只负责
 > ①把自然语言解析成结构化意图，②从真实候选池里筛选排序。完整背景见 [docs/requirements.md](docs/requirements.md)。

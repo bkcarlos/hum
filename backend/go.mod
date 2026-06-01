@@ -1,4 +1,4 @@
-module github.com/bkcarlos/apple-music-llm
+module github.com/bkcarlos/hum
 
 go 1.23
 

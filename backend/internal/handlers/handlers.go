@@ -4,8 +4,8 @@ package handlers
 import (
 	"context"
 
-	"github.com/bkcarlos/apple-music-llm/internal/applemusic"
-	"github.com/bkcarlos/apple-music-llm/internal/config"
+	"github.com/bkcarlos/hum/internal/applemusic"
+	"github.com/bkcarlos/hum/internal/config"
 )
 
 // llmAPIKeyHeader is the ONLY place the BYOK user key travels. It is read per

@@ -11,11 +11,11 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 
-	"github.com/bkcarlos/apple-music-llm/internal/applemusic"
-	"github.com/bkcarlos/apple-music-llm/internal/config"
-	"github.com/bkcarlos/apple-music-llm/internal/handlers"
-	"github.com/bkcarlos/apple-music-llm/internal/httpx"
-	"github.com/bkcarlos/apple-music-llm/internal/middleware"
+	"github.com/bkcarlos/hum/internal/applemusic"
+	"github.com/bkcarlos/hum/internal/config"
+	"github.com/bkcarlos/hum/internal/handlers"
+	"github.com/bkcarlos/hum/internal/httpx"
+	"github.com/bkcarlos/hum/internal/middleware"
 )
 
 func main() {

@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/bkcarlos/apple-music-llm/internal/applemusic"
-	"github.com/bkcarlos/apple-music-llm/internal/config"
-	"github.com/bkcarlos/apple-music-llm/internal/llm"
+	"github.com/bkcarlos/hum/internal/applemusic"
+	"github.com/bkcarlos/hum/internal/config"
+	"github.com/bkcarlos/hum/internal/llm"
 )
 
 // ── test scaffolding ────────────────────────────────────────────────────

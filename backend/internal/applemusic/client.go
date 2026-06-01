@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkcarlos/apple-music-llm/internal/cache"
+	"github.com/bkcarlos/hum/internal/cache"
 )
 
 // DefaultAPIBase is the public Apple Music API host.
