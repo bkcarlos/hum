@@ -1,0 +1,57 @@
+# Cloud Build: build the single-service image and deploy to Cloud Run.
+# Used by "方式 B" (config-in-git) of docs/deploy-cloudrun.md — attach a Cloud
+# Build trigger on push to main pointing at this file.
+#
+# Prereqs (one-time): the Artifact Registry repo `cloud-run-source-deploy` and
+# the `apple-p8` secret must exist — running deploy/cloudrun.sh once creates both.
+#
+# Trigger substitutions to set: _APPLE_TEAM_ID, _APPLE_KEY_ID (and optionally
+# _REGION / _SERVICE / _MIN_INSTANCES). The .p8 stays in Secret Manager.
+
+substitutions:
+  _SERVICE: hum
+  _REGION: asia-northeast1
+  _APPLE_TEAM_ID: "" # set on the trigger
+  _APPLE_KEY_ID: "" # set on the trigger
+  _SECRET: apple-p8 # Secret Manager secret holding the .p8 PEM
+  _MIN_INSTANCES: "0"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - "${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/${_SERVICE}:$COMMIT_SHA"
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/${_SERVICE}:$COMMIT_SHA"
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - "${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/${_SERVICE}:$COMMIT_SHA"
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --cpu=1
+      - --memory=512Mi
+      - --min-instances=${_MIN_INSTANCES}
+      - --max-instances=3
+      - --set-env-vars=APPLE_TEAM_ID=${_APPLE_TEAM_ID},APPLE_KEY_ID=${_APPLE_KEY_ID},GIN_MODE=release
+      - --set-secrets=APPLE_PRIVATE_KEY=${_SECRET}:latest

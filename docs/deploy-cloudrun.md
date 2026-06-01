@@ -77,9 +77,49 @@ curl https://<服务URL>/api/health     # 期望 {"data":{"status":"ok"}}
 - 改完代码重新部署：再跑一次 `./deploy/cloudrun.sh`（或 `gcloud run deploy hum --source . --region <region>`）。
 - 回滚：`gcloud run services update-traffic hum --to-revisions=<旧revision>=100 --region <region>`。
 
-## 七、自动部署（可选 · GitHub Actions）
+## 七、自动部署（推到 main 自动发布）
 
-想"推到 main 自动部署"，推荐用 **Workload Identity Federation**（无长期密钥）：建一个 WIF pool/provider 绑定本仓库，再加一个 `.github/workflows/deploy-cloudrun.yml`。这步命令较多——需要的话我可以把 WIF 初始化脚本和 workflow 一起补上。
+### 方式 A · Cloud Run 内置「持续部署」（最简单，推荐）
+
+全程控制台，不用写 CI、不碰密钥文件：
+
+1. **先手动部署一次**（`./deploy/cloudrun.sh`），确保服务、`apple-p8` 密钥、Artifact Registry 仓库都已就绪。
+2. Cloud Run 控制台 → 打开服务 `hum` → 顶部 **「设置持续部署 / Set up continuous deployment」**。
+3. 连接 GitHub（首次授权 Cloud Build 的 GitHub App）→ 选仓库 `bkcarlos/hum`、分支 `^main$`、**Build type 选 Dockerfile**。保存后会自动建一个 Cloud Build 触发器。
+4. 确认服务的「变量与密钥」已设：`APPLE_TEAM_ID`、`APPLE_KEY_ID`、`GIN_MODE=release`（环境变量），`APPLE_PRIVATE_KEY` ← 引用 Secret Manager 的 `apple-p8`。
+
+此后每次 `git push` 到 main → 自动构建镜像、发布新版本。
+**关键点**：自动部署只更新镜像，`gcloud run deploy` 默认**保留**服务已有的环境变量/密钥，所以上面那些设一次就够。
+
+### 方式 B · 配置进 Git（`cloudbuild.yaml` + 触发器，可复现）
+
+想把部署参数纳入版本控制，用仓库根目录的 [`cloudbuild.yaml`](../cloudbuild.yaml)：
+
+1. **一次性**：连接 GitHub 到 Cloud Build（Console: Cloud Build → 触发器 → 连接仓库，授权 `bkcarlos/hum`）。
+2. **给构建服务账号授权**（部署 Cloud Run + 以运行时账号身份部署）：
+   ```bash
+   PROJNUM=$(gcloud projects describe <项目ID> --format='value(projectNumber)')
+   BUILD_SA="${PROJNUM}@cloudbuild.gserviceaccount.com"   # 若用 Compute 默认 SA 构建则换成它
+   gcloud projects add-iam-policy-binding <项目ID> \
+     --member="serviceAccount:${BUILD_SA}" --role=roles/run.admin
+   gcloud iam service-accounts add-iam-policy-binding \
+     "${PROJNUM}-compute@developer.gserviceaccount.com" \
+     --member="serviceAccount:${BUILD_SA}" --role=roles/iam.serviceAccountUser
+   ```
+3. **建触发器**，指向 `cloudbuild.yaml` 并填替换变量：
+   ```bash
+   gcloud builds triggers create github \
+     --name=hum-deploy --repo-name=hum --repo-owner=bkcarlos \
+     --branch-pattern='^main$' --build-config=cloudbuild.yaml \
+     --substitutions=_REGION=asia-northeast1,_APPLE_TEAM_ID=ABCDE12345,_APPLE_KEY_ID=KEY1234567
+   ```
+   `.p8` 仍只在 Secret Manager，由 `cloudbuild.yaml` 的 `--set-secrets` 引用，不进仓库。
+
+> 方式 B 的构建账号 IAM 因项目而异（经典 Cloud Build SA vs Compute 默认 SA）；若报权限错，按提示给对应 SA 补 `run.admin` / `iam.serviceAccountUser`，并确认运行时 SA 有 `secretmanager.secretAccessor`。嫌麻烦就用方式 A。
+
+### GitHub Actions（想在 GitHub 侧跑 CI 时）
+
+也可用 `google-github-actions/auth`（推荐 Workload Identity Federation，免长期密钥）跑 `gcloud run deploy`。需先建 WIF 并绑仓库——需要的话我把 workflow + WIF 初始化命令补上。
 
 ## 安全提醒
 
