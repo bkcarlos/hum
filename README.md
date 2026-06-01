@@ -8,8 +8,8 @@
 > 黄金原则：**LLM 不产歌，只懂人与排序**。歌曲事实层全部来自 Apple Music 官方 API，LLM 只负责
 > ①把自然语言解析成结构化意图，②从真实候选池里筛选排序。完整背景见 [docs/requirements.md](docs/requirements.md)。
 
-这是 **M1 就绪的脚手架**：认证、BYOK LLM 抽象、双栏 UI、主链路骨架已打通并通过构建/测试；接入真实
-Apple 凭证后即可端到端跑通。
+实现状态：**M1–M4 已实现并通过构建/测试**（认证、BYOK LLM、双栏 UI、主链路、并发+缓存检索、单服务部署）。
+尚缺的是接入真实 Apple 凭证 + 目标浏览器实测的**端到端联调**——详见下方「已实现 vs 待办」。
 
 ---
 
@@ -27,20 +27,25 @@ Go + Gin  (backend/)
   └─ 安全：用户 Key 单次请求用完即弃，绝不落库/缓存/日志（日志中间件显式排除敏感 header）
 ```
 
+> 生产（方案 1 · 单服务）：同一个 Go 进程同时托管前端静态文件与 `/api`，前端/API 同源、无需 CORS。
+
 ## 目录结构
 
 ```
-apple_music_llm/
+apple_music_llm/                 # 仓库目录（项目代号 Hum）
 ├── docs/requirements.md         # 需求文档（v0.5，单一事实来源）
+├── Dockerfile / .dockerignore   # 单服务镜像（方案 1：Go 同时托管前端 + /api）
+├── Makefile                     # dev / build / test 快捷命令
 ├── backend/                     # Go + Gin 编排层
-│   ├── cmd/server/main.go       # 入口：路由 + 中间件
+│   ├── cmd/server/main.go       # 入口：路由 / CORS / release 模式 / 托管前端
 │   └── internal/
 │       ├── config/              # 环境配置（无任何 LLM key）
 │       ├── applemusic/          # Developer Token 签发 + 目录搜索 + 建歌单
 │       ├── llm/                 # LLMProvider 接口 + 三适配器 + 错误归一化
+│       ├── cache/               # 检索结果 TTL 缓存（key 含 storefront）
 │       ├── handlers/            # HTTP 处理器（key 从 header 读、用完即弃）
-│       ├── httpx/               # 统一响应helper
-│       └── middleware/          # 日志（脱敏）/ CORS
+│       ├── httpx/               # 统一响应 helper
+│       └── middleware/          # 请求日志（脱敏，永不记录敏感 header）
 └── frontend/                    # Vue 3 单页应用
     └── src/
         ├── api/                 # 后端客户端（注入 key header）
