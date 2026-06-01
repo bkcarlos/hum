@@ -20,8 +20,9 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# --- OS / editor ---
+# --- OS / editor / local tooling ---
 .DS_Store
+.claude/
 .idea/
 .vscode/*
 !.vscode/extensions.json

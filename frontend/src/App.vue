@@ -84,7 +84,11 @@ const themeOverrides: GlobalThemeOverrides = {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* Pin to the viewport directly: NConfigProvider renders a block wrapper with
+     auto height, which breaks a height:100% chain and leaves the lower part of
+     the page empty on tall/full-screen viewports. */
+  height: 100vh;
+  height: 100dvh;
 }
 .topbar {
   flex: 0 0 auto;
@@ -142,10 +146,27 @@ const themeOverrides: GlobalThemeOverrides = {
   padding: 8px 12px 12px;
 }
 .tab-body {
-  height: calc(100vh - 140px);
+  height: calc(100dvh - 140px);
   background: #fff;
   border: 1px solid #ececec;
   border-radius: 14px;
   padding: 14px;
+}
+
+/* Responsive: compact header on small screens — hide the decorative tagline and
+   let the action buttons wrap to a second row instead of overflowing. */
+@media (max-width: 900px) {
+  .tagline {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .actions {
+    margin-left: auto;
+  }
 }
 </style>
