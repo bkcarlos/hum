@@ -1,0 +1,148 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { NConfigProvider, NButton, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
+import type { GlobalThemeOverrides } from 'naive-ui'
+import AppleConnect from '@/components/AppleConnect.vue'
+import LlmConfigDialog from '@/components/LlmConfigDialog.vue'
+import ConversationPane from '@/components/ConversationPane.vue'
+import PlaylistPane from '@/components/PlaylistPane.vue'
+import { useMediaQuery } from '@/composables/useMediaQuery'
+import { useLlmConfigStore } from '@/stores/llmConfig'
+import { usePlaylistStore } from '@/stores/playlist'
+
+const llm = useLlmConfigStore()
+const playlist = usePlaylistStore()
+
+// Responsive degradation (must-do): narrow screens drop the side-by-side layout
+// for tabs (对话 / 歌单) — never two panes squeezed on mobile.
+const isNarrow = useMediaQuery('(max-width: 900px)')
+const activeTab = ref<'chat' | 'list'>('chat')
+
+const showConfig = ref(false)
+
+const themeOverrides: GlobalThemeOverrides = {
+  common: {
+    primaryColor: '#fa2d48',
+    primaryColorHover: '#ff4d63',
+    primaryColorPressed: '#d61f38',
+    borderRadius: '10px',
+  },
+}
+</script>
+
+<template>
+  <n-config-provider :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">🎧</span>
+          <div>
+            <div class="name">AI 歌单助手</div>
+            <div class="tagline">用自然语言，从 Apple Music 真实曲库挑歌建单</div>
+          </div>
+        </div>
+        <div class="actions">
+          <AppleConnect />
+          <n-button
+            :type="llm.configured ? 'default' : 'primary'"
+            size="small"
+            @click="showConfig = true"
+          >
+            {{ llm.configured ? 'LLM 设置' : '配置 LLM Key' }}
+          </n-button>
+        </div>
+      </header>
+
+      <!-- Wide: dual pane. Narrow: tabs. -->
+      <main v-if="!isNarrow" class="dual">
+        <section class="col left"><ConversationPane /></section>
+        <section class="col right"><PlaylistPane /></section>
+      </main>
+
+      <main v-else class="tabs">
+        <n-tabs v-model:value="activeTab" type="line" justify-content="space-evenly" animated>
+          <n-tab-pane name="chat" tab="对话">
+            <div class="tab-body"><ConversationPane /></div>
+          </n-tab-pane>
+          <n-tab-pane name="list">
+            <template #tab>
+              <n-badge :value="playlist.selectedCount" :max="99" :show="playlist.selectedCount > 0">
+                <span style="padding-right: 4px">歌单</span>
+              </n-badge>
+            </template>
+            <div class="tab-body"><PlaylistPane /></div>
+          </n-tab-pane>
+        </n-tabs>
+      </main>
+
+      <LlmConfigDialog v-model:show="showConfig" />
+    </div>
+  </n-config-provider>
+</template>
+
+<style scoped>
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ececec;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo {
+  font-size: 22px;
+}
+.name {
+  font-weight: 700;
+  font-size: 16px;
+}
+.tagline {
+  font-size: 12px;
+  color: #999;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dual {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.1fr);
+  gap: 16px;
+  padding: 16px;
+}
+.col {
+  background: #fff;
+  border: 1px solid #ececec;
+  border-radius: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 12px 12px;
+}
+.tab-body {
+  height: calc(100vh - 140px);
+  background: #fff;
+  border: 1px solid #ececec;
+  border-radius: 14px;
+  padding: 14px;
+}
+</style>
