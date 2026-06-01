@@ -136,6 +136,8 @@ docker run -p 8080:8080 \
 - 想最省钱 / 缩到 0 且冷启动要快 → **Cloud Run**
 - 在意亚洲访问延迟、想指定区域 → **Fly.io**（选东京/香港节点）
 
+> **Cloud Run 一键脚本与详细步骤**：见 [docs/deploy-cloudrun.md](docs/deploy-cloudrun.md)，部署脚本 [`deploy/cloudrun.sh`](deploy/cloudrun.sh)。
+
 > 注意：① 本应用首个请求会触发两次 LLM + 一次检索（目标 < 8s），所以**冷启动越短越好**——这点 Cloud Run / Fly 优于 Render 免费档。② 各家定价与免费政策时常变动，以官网为准。③ 若从中国大陆访问，几家平台连通性都可能有波动，必要时自备可达的域名/线路。
 
 ## 安全要点（BYOK · 方案 B）

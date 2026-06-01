@@ -1,0 +1,19 @@
+# Files NOT uploaded to Cloud Build (keeps the build context small & secret-free).
+# The Dockerfile re-installs deps and rebuilds the frontend, so node_modules/dist
+# are intentionally excluded.
+.git
+.gitignore
+**/node_modules
+frontend/dist
+frontend/.vite
+backend/bin
+backend/server
+
+# Never upload secrets / local env
+*.p8
+**/.env
+**/.env.local
+secrets/
+
+*.log
+.DS_Store
