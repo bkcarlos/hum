@@ -57,8 +57,9 @@ WEB_DIR="$PWD/frontend/dist" GIN_MODE=release PORT=8080 go -C backend run ./cmd/
 | POST | `/api/intent` | `ParseIntent` | 自然语言 → `Intent` |
 | POST | `/api/rank` | `Rank` | 候选池 → `RankResult`（排序+理由+歌单名） |
 | POST | `/api/suggest` | `Suggest` | **方案 A**：LLM 提名歌曲 → 逐条 Apple 解析校验 → 真实候选池（+ intent + 未命中清单）；前端主链路用它取代 `/apple/search` |
+| POST | `/api/examples` | `Examples` | 个性化空状态示例（千人千面）：按上下文 + 本地口味让 LLM 现编几条；前端无 key 时回退本地挑选（`pickExamples`，纯前端无模型） |
 
-**LLM 层**（`internal/llm/`）：统一接口 `Provider{ ParseIntent, SuggestSongs, RankSongs, Ping }`（`SuggestSongs` 为方案 A 新增），三适配器 `openai-compat` / `anthropic` / `gemini`，由 `llm.New(Config)` 工厂按 provider 填默认 BaseURL/Model。`Config.APIKey` 是请求作用域密钥，随 Provider 实例随请求销毁。数据契约：`Intent{moods,genres,instruments,tempo,keywords,seed_artists}`、`Candidate{id,title,artist,album,genres,year,hasLyrics,contentRating}`、`RankResult{playlist_name,description,songs[]{id,reason}}`。`Song` 还带 `releaseDate/contentRating/hasLyrics/isrc/composer`（同一次 Apple 响应白送，喂排序+落地"去掉有歌词的""不要露骨的"等过滤；Apple 无 BPM/energy）。错误三家归一化见 `errors.go`。
+**LLM 层**（`internal/llm/`）：统一接口 `Provider{ ParseIntent, SuggestSongs, SuggestExamples, RankSongs, Ping }`（`SuggestSongs` 方案 A、`SuggestExamples` 千人千面示例，均在 `core.go` 写一遍三家继承），三适配器 `openai-compat` / `anthropic` / `gemini`，由 `llm.New(Config)` 工厂按 provider 填默认 BaseURL/Model。`Config.APIKey` 是请求作用域密钥，随 Provider 实例随请求销毁。数据契约：`Intent{moods,genres,instruments,tempo,keywords,seed_artists}`、`Candidate{id,title,artist,album,genres,year,hasLyrics,contentRating}`、`RankResult{playlist_name,description,songs[]{id,reason}}`。`Song` 还带 `releaseDate/contentRating/hasLyrics/isrc/composer`（同一次 Apple 响应白送，喂排序+落地"去掉有歌词的""不要露骨的"等过滤；Apple 无 BPM/energy）。错误三家归一化见 `errors.go`。
 
 **配置/env**（[`internal/config/config.go`](backend/internal/config/config.go)，可读 `.env`，进程已有 env 优先）：
 
