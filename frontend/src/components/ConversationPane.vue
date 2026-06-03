@@ -7,7 +7,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
 import { useLlmConfigStore } from '@/stores/llmConfig'
 import { useRecommendation } from '@/composables/useRecommendation'
-import { nowContext, topTastes } from '@/data/personalize'
+import { nowContext, pickExamples, topTastes } from '@/data/personalize'
 
 const convo = useConversationStore()
 const playlist = usePlaylistStore()
@@ -18,8 +18,9 @@ const input = ref('')
 const seeds = ref('')
 
 // Empty-state inspiration: a pool of natural-language prompts (not atomic tags)
-// that show what to type and play to Option A's strength. We show a RANDOM few —
-// real Math.random() in the browser, re-rolled on each load and via "换一批".
+// that show what to type and play to Option A's strength. We surface a few —
+// without an LLM key, picked & ranked by local context + taste history
+// (pickExamples, no model); with a key, the LLM writes fresh phrasings instead.
 // Clicking one fills the composer so the user can edit before sending.
 const EXAMPLE_POOL = [
   '适合雨天加班的慵懒爵士，别太吵',
@@ -33,15 +34,7 @@ const EXAMPLE_POOL = [
   '派对热场，复古 disco / funk',
   '专注写代码，无人声 lo-fi',
 ]
-function sample(pool: string[], n: number): string[] {
-  const a = [...pool]
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[a[i], a[j]] = [a[j], a[i]]
-  }
-  return a.slice(0, n)
-}
-const examples = ref<string[]>(sample(EXAMPLE_POOL, 4))
+const examples = ref<string[]>(pickExamples(EXAMPLE_POOL, 4))
 const exLoading = ref(false)
 const SESSION_KEY = 'hum.examples.session'
 
@@ -51,7 +44,7 @@ const SESSION_KEY = 'hum.examples.session'
 // re-call on every reload; "换一批" forces a fresh generation.
 async function refreshExamples(force = false) {
   if (!llm.configured) {
-    examples.value = sample(EXAMPLE_POOL, 4)
+    examples.value = pickExamples(EXAMPLE_POOL, 4)
     return
   }
   if (!force) {
@@ -80,7 +73,7 @@ async function refreshExamples(force = false) {
 }
 function shuffleExamples() {
   if (llm.configured) refreshExamples(true)
-  else examples.value = sample(EXAMPLE_POOL, 4)
+  else examples.value = pickExamples(EXAMPLE_POOL, 4)
 }
 function useExample(t: string) {
   input.value = t

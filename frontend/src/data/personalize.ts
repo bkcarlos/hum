@@ -43,3 +43,35 @@ export function nowContext(): string {
   const weekend = d.getDay() === 0 || d.getDay() === 6 ? '周末' : '工作日'
   return `${weekend}${part}，地区语言：${navigator.language || 'zh'}`
 }
+
+/** Keywords describing the current moment, used to bias no-LLM example selection. */
+function contextKeywords(): string[] {
+  const d = new Date()
+  const h = d.getHours()
+  const keys: string[] = []
+  if (h < 6 || h >= 23) keys.push('深夜', '夜', '睡前', '放空', '放松')
+  else if (h < 11) keys.push('早晨', '早餐', '通勤', '起床')
+  else if (h < 18) keys.push('专注', '写代码', '加班', '咖啡馆')
+  else keys.push('夜', '放松', '派对', '失恋')
+  if (d.getDay() === 0 || d.getDay() === 6) keys.push('周末')
+  return keys
+}
+
+/** Pick n examples from a pool WITHOUT an LLM, personalized by local signals:
+ *  score each by overlap with recent tastes (strong) and the current context
+ *  (light), plus a small random jitter for freshness. Cold start ≈ random.
+ *  This is the no-key "千人千面 lite"; with a key the LLM writes fresh phrasings. */
+export function pickExamples(pool: string[], n: number): string[] {
+  const tastes = topTastes(12)
+  const ctx = contextKeywords()
+  return pool
+    .map((ex) => {
+      let score = Math.random() * 0.9 // jitter < 1: only breaks ties / adds variety
+      for (const t of tastes) if (t.length >= 2 && ex.includes(t)) score += 2
+      for (const k of ctx) if (ex.includes(k)) score += 1
+      return { ex, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map((x) => x.ex)
+}
