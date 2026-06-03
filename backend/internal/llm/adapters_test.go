@@ -184,3 +184,84 @@ func TestGemini_RequestAndParse(t *testing.T) {
 	}
 	assertIntent(t, in)
 }
+
+// ── ListModels (best-effort model discovery) ────────────────────────────
+func TestOpenAICompat_ListModels(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = io.WriteString(w, mustJSON(map[string]any{"object": "list", "data": []map[string]any{
+			{"id": "gpt-4o"}, {"id": "gpt-4o-mini"},
+		}}))
+	}))
+	defer srv.Close()
+
+	p := newOpenAICompat(cfg(ProviderOpenAICompat, srv.URL))
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if path != "/models" {
+		t.Errorf("path = %q, want /models", path)
+	}
+	if len(models) != 2 || models[0].ID != "gpt-4o" {
+		t.Fatalf("models = %+v", models)
+	}
+}
+
+func TestAnthropic_ListModels(t *testing.T) {
+	var apiKey, path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKey = r.Header.Get("x-api-key")
+		path = r.URL.Path
+		_, _ = io.WriteString(w, mustJSON(map[string]any{"data": []map[string]any{
+			{"id": "claude-sonnet-4-6", "display_name": "Claude Sonnet 4.6"},
+			{"id": "claude-opus-4-8", "display_name": "Claude Opus 4.8"},
+		}}))
+	}))
+	defer srv.Close()
+
+	p := newAnthropic(cfg(ProviderAnthropic, srv.URL))
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if apiKey != "secret-key" {
+		t.Errorf("x-api-key = %q", apiKey)
+	}
+	if path != "/v1/models" {
+		t.Errorf("path = %q, want /v1/models", path)
+	}
+	if len(models) != 2 || models[1].DisplayName != "Claude Opus 4.8" {
+		t.Fatalf("models = %+v", models)
+	}
+}
+
+func TestGemini_ListModels(t *testing.T) {
+	var apiKeyHeader, rawQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiKeyHeader = r.Header.Get("x-goog-api-key")
+		rawQuery = r.URL.RawQuery
+		_, _ = io.WriteString(w, mustJSON(map[string]any{"models": []map[string]any{
+			{"name": "models/gemini-2.0-flash", "displayName": "Gemini 2.0 Flash", "supportedGenerationMethods": []string{"generateContent", "countTokens"}},
+			{"name": "models/text-embedding-004", "displayName": "Embedding", "supportedGenerationMethods": []string{"embedContent"}},
+		}}))
+	}))
+	defer srv.Close()
+
+	p := newGemini(cfg(ProviderGemini, srv.URL))
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if apiKeyHeader != "secret-key" {
+		t.Errorf("x-goog-api-key = %q", apiKeyHeader)
+	}
+	if strings.Contains(rawQuery, "secret-key") {
+		t.Errorf("API key leaked into URL query: %q", rawQuery)
+	}
+	// Only the generateContent model survives, with the "models/" prefix stripped.
+	if len(models) != 1 || models[0].ID != "gemini-2.0-flash" {
+		t.Fatalf("models = %+v, want [gemini-2.0-flash]", models)
+	}
+}

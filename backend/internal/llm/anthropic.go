@@ -63,3 +63,33 @@ func (p *anthropic) chat(ctx context.Context, system, user string) (string, erro
 	}
 	return sb.String(), nil
 }
+
+// ListModels calls GET {base}/v1/models (Anthropic's Models API). limit=1000
+// pulls the whole (small) catalog in one page, avoiding pagination.
+func (p *anthropic) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	url := strings.TrimRight(p.cfg.BaseURL, "/") + "/v1/models?limit=1000"
+	headers := map[string]string{
+		"x-api-key":         p.cfg.APIKey,
+		"anthropic-version": anthropicVersion,
+	}
+	body, err := getJSON(ctx, p.http, url, headers, ProviderAnthropic)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, &APIError{Kind: ErrUpstream, Provider: ProviderAnthropic, Message: "无法解析模型列表：" + err.Error()}
+	}
+	models := make([]ModelInfo, 0, len(out.Data))
+	for _, m := range out.Data {
+		if m.ID != "" {
+			models = append(models, ModelInfo{ID: m.ID, DisplayName: m.DisplayName})
+		}
+	}
+	return models, nil
+}

@@ -10,6 +10,14 @@ export interface LlmBody {
   model: string
 }
 
+/** One selectable model returned by /llm/models — the provider's live catalog.
+ *  The config UI merges these with the static presets (and still allows typing
+ *  a model name by hand for gateways that don't support listing). */
+export interface ModelInfo {
+  id: string
+  displayName?: string
+}
+
 /** Structured intent parsed from natural language (F3). */
 export interface Intent {
   moods: string[]

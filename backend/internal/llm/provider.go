@@ -100,6 +100,14 @@ type ExampleHints struct {
 	Tastes  []string `json:"tastes"`
 }
 
+// ModelInfo is one selectable model returned by ListModels: an id (sent as the
+// model name) plus an optional human label. Best-effort discovery — the config
+// UI merges these with the static presets and still allows typing a name.
+type ModelInfo struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
 // Provider is the single internal interface every adapter implements.
 type Provider interface {
 	// ParseIntent turns free text (+ optional seed artists) into an Intent.
@@ -114,6 +122,10 @@ type Provider interface {
 	// SuggestExamples generates short natural-language example prompts personalized
 	// to the given context + recent tastes (empty-state inspiration; names no songs).
 	SuggestExamples(ctx context.Context, hints ExampleHints, count int) ([]string, error)
+	// ListModels fetches the provider's available model ids for the configured
+	// key/BaseURL (F0 convenience). Best-effort: not every OpenAI-compatible
+	// gateway supports it, so callers MUST fall back to manual entry on error.
+	ListModels(ctx context.Context) ([]ModelInfo, error)
 	// Ping issues a minimal request to validate the key / connectivity (F0 test).
 	Ping(ctx context.Context) error
 }

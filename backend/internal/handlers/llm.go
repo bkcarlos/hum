@@ -20,15 +20,22 @@ type llmConfigDTO struct {
 }
 
 // provider builds a request-scoped llm.Provider from the body config + header
-// key. On any problem it writes the error response and returns ok=false.
+// key, requiring a model. On any problem it writes the error response and
+// returns ok=false.
 func (h *Handlers) provider(c *gin.Context, dto llmConfigDTO) (llm.Provider, bool) {
+	return h.providerWith(c, dto, true)
+}
+
+// providerWith is provider() with control over whether a model is required.
+// ListModels targets the key + BaseURL only (no model yet), so it passes false.
+func (h *Handlers) providerWith(c *gin.Context, dto llmConfigDTO, requireModel bool) (llm.Provider, bool) {
 	key := strings.TrimSpace(c.GetHeader(llmAPIKeyHeader))
 	if key == "" {
 		httpx.Fail(c, http.StatusBadRequest, "no_key",
 			"未配置 LLM API Key，请先在「LLM 设置」中完成配置（F0）。")
 		return nil, false
 	}
-	if strings.TrimSpace(dto.Model) == "" {
+	if requireModel && strings.TrimSpace(dto.Model) == "" {
 		httpx.Fail(c, http.StatusBadRequest, "bad_request", "缺少模型名（model）。")
 		return nil, false
 	}
@@ -144,6 +151,30 @@ func (h *Handlers) Examples(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, gin.H{"examples": ex})
+}
+
+// Models (POST /api/llm/models) lists the provider's available models for the
+// given key + BaseURL (F0 convenience). Best-effort: many OpenAI-compatible
+// gateways don't support it, so the UI falls back to manual entry on error. No
+// model is required in the body — discovering which ones exist is the point.
+func (h *Handlers) Models(c *gin.Context) {
+	var body struct {
+		LLM llmConfigDTO `json:"llm"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "请求体无效。")
+		return
+	}
+	p, ok := h.providerWith(c, body.LLM, false)
+	if !ok {
+		return
+	}
+	models, err := p.ListModels(c.Request.Context())
+	if err != nil {
+		writeLLMError(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"models": models})
 }
 
 // writeLLMError maps a normalized *llm.APIError to an HTTP status + code so the

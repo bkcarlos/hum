@@ -40,6 +40,7 @@ func router(h *Handlers) *gin.Engine {
 	g := r.Group("/api")
 	g.POST("/intent", h.ParseIntent)
 	g.POST("/llm/test", h.TestLLM)
+	g.POST("/llm/models", h.Models)
 	g.GET("/apple/developer-token", h.DeveloperToken)
 	g.POST("/apple/search", h.Search)
 	g.POST("/suggest", h.Suggest)
@@ -174,6 +175,41 @@ func TestExamples_RequiresKey(t *testing.T) {
 	w := do(r, http.MethodPost, "/api/examples", nil, body) // no X-LLM-Api-Key
 	if w.Code != http.StatusBadRequest || errCode(w) != "no_key" {
 		t.Fatalf("got %d %s, want 400 no_key", w.Code, errCode(w))
+	}
+}
+
+func TestModels_RequiresKey(t *testing.T) {
+	r := router(New(baseCfg(), nil, nil))
+	body := map[string]any{"llm": map[string]any{"provider": "openai-compat", "baseUrl": "https://x"}}
+	w := do(r, http.MethodPost, "/api/llm/models", nil, body) // no X-LLM-Api-Key
+	if w.Code != http.StatusBadRequest || errCode(w) != "no_key" {
+		t.Fatalf("got %d %s, want 400 no_key", w.Code, errCode(w))
+	}
+}
+
+func TestModels_OK_NoModelNeeded(t *testing.T) {
+	// The list endpoint must work WITHOUT a model in the body (we're discovering them).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[{"id":"gpt-4o"},{"id":"gpt-4o-mini"}]}`)
+	}))
+	defer srv.Close()
+
+	r := router(New(baseCfg(), nil, nil))
+	body := map[string]any{"llm": map[string]any{"provider": "openai-compat", "baseUrl": srv.URL}}
+	w := do(r, http.MethodPost, "/api/llm/models", map[string]string{"X-LLM-Api-Key": "k"}, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Models []struct {
+				ID string `json:"id"`
+			} `json:"models"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if len(resp.Data.Models) != 2 || resp.Data.Models[0].ID != "gpt-4o" {
+		t.Fatalf("models = %+v", resp.Data.Models)
 	}
 }
 

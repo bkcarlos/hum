@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios'
-import type { ApiError, Candidate, Intent, LlmBody, RankResult, Song, SuggestResult } from '@/types'
+import type { ApiError, Candidate, Intent, LlmBody, ModelInfo, RankResult, Song, SuggestResult } from '@/types'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? '/api',
@@ -27,6 +27,13 @@ function keyHeader(apiKey: string) {
 // ── BYOK / LLM ────────────────────────────────────────────────────────
 export function testLlm(llm: LlmBody, apiKey: string): Promise<{ ok: boolean }> {
   return http.post('/llm/test', { llm }, keyHeader(apiKey))
+}
+
+/** Best-effort: fetch the provider's available models for the current key +
+ *  Base URL. Not every OpenAI-compatible gateway supports it — callers fall
+ *  back to manual entry on error. The `model` field in `llm` is ignored here. */
+export function listModels(llm: LlmBody, apiKey: string): Promise<{ models: ModelInfo[] }> {
+  return http.post('/llm/models', { llm }, keyHeader(apiKey))
 }
 
 export function parseIntent(llm: LlmBody, apiKey: string, text: string, seedArtists: string[]): Promise<Intent> {

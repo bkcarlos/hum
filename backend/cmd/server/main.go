@@ -83,6 +83,7 @@ func main() {
 
 		// BYOK LLM
 		api.POST("/llm/test", h.TestLLM)
+		api.POST("/llm/models", h.Models) // best-effort live model list for the config UI
 		api.POST("/intent", h.ParseIntent)
 		api.POST("/rank", h.Rank)
 		api.POST("/suggest", h.Suggest)   // Option A: LLM proposes songs → resolved against Apple
