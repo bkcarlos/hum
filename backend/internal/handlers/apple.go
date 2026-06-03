@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	perTermLimit = 25  // Apple catalog search max results per request
-	maxPoolSize  = 150 // candidate pool cap (F4: target 50–150, de-duplicated)
+	perTermLimit       = 25  // Apple catalog search max results per request
+	maxPoolSize        = 150 // candidate pool cap (F4: target 50–150, de-duplicated)
+	resolveConcurrency = 8   // max concurrent Apple lookups when resolving LLM suggestions (Option A)
 )
 
 // DeveloperToken (GET /api/apple/developer-token) returns the JWT MusicKit JS
@@ -105,6 +107,101 @@ func (h *Handlers) Search(c *gin.Context) {
 		return
 	}
 	httpx.OK(c, gin.H{"storefront": body.Storefront, "candidates": pool, "count": len(pool)})
+}
+
+// Suggest (POST /api/suggest) — Option A: the LLM proposes specific real songs
+// for the request, and each is resolved against the user's storefront so only
+// tracks that actually exist on Apple Music reach the client. The LLM proposes;
+// Apple verifies (golden rule). Returns the grounded candidate pool, the intent
+// (for display), and which suggestions could not be resolved (for transparency).
+func (h *Handlers) Suggest(c *gin.Context) {
+	if h.apple == nil {
+		httpx.Fail(c, http.StatusServiceUnavailable, "apple_unconfigured", "后端未配置 Apple 开发者凭证。")
+		return
+	}
+	var body struct {
+		LLM         llmConfigDTO `json:"llm"`
+		Text        string       `json:"text"`
+		SeedArtists []string     `json:"seedArtists"`
+		Storefront  string       `json:"storefront"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "请求体无效。")
+		return
+	}
+	if strings.TrimSpace(body.Text) == "" {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "请输入一段描述。")
+		return
+	}
+	if strings.TrimSpace(body.Storefront) == "" {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "缺少 storefront（请先授权 Apple Music）。")
+		return
+	}
+	p, ok := h.provider(c, body.LLM)
+	if !ok {
+		return
+	}
+	sug, err := p.SuggestSongs(c.Request.Context(), body.Text, body.SeedArtists)
+	if err != nil {
+		writeLLMError(c, err)
+		return
+	}
+
+	pool, unresolved := h.resolveSuggestions(c.Request.Context(), body.Storefront, sug.Suggestions)
+	if len(pool) == 0 {
+		httpx.Fail(c, http.StatusNotFound, "empty_pool",
+			"AI 推荐的歌在 Apple Music 上都没匹配到，请换个说法或更具体些。")
+		return
+	}
+	httpx.OK(c, gin.H{
+		"storefront": body.Storefront,
+		"intent":     sug.Intent,
+		"candidates": pool,
+		"suggested":  len(sug.Suggestions),
+		"resolved":   len(pool),
+		"unresolved": unresolved,
+	})
+}
+
+// resolveSuggestions resolves each LLM suggestion against the catalog concurrently
+// (bounded by resolveConcurrency), preserving suggestion order, de-duplicating by
+// track id, and capping the pool. Suggestions that don't resolve are returned as
+// "Artist - Title" strings for transparency.
+func (h *Handlers) resolveSuggestions(ctx context.Context, storefront string, sugs []llm.SongSuggestion) ([]applemusic.Song, []string) {
+	resolved := make([]*applemusic.Song, len(sugs))
+	sem := make(chan struct{}, resolveConcurrency)
+	var wg sync.WaitGroup
+	for i, s := range sugs {
+		wg.Add(1)
+		go func(i int, s llm.SongSuggestion) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if song, ok, err := h.apple.ResolveSong(ctx, storefront, s.Title, s.Artist); err == nil && ok {
+				resolved[i] = song
+			}
+		}(i, s)
+	}
+	wg.Wait()
+
+	seen := make(map[string]struct{}, len(sugs))
+	pool := make([]applemusic.Song, 0, len(sugs))
+	unresolved := make([]string, 0)
+	for i, s := range sugs {
+		if resolved[i] == nil {
+			unresolved = append(unresolved, strings.Trim(strings.TrimSpace(s.Artist+" - "+s.Title), "- "))
+			continue
+		}
+		if _, dup := seen[resolved[i].ID]; dup {
+			continue
+		}
+		seen[resolved[i].ID] = struct{}{}
+		pool = append(pool, *resolved[i])
+		if len(pool) >= maxPoolSize {
+			break
+		}
+	}
+	return pool, unresolved
 }
 
 // CreatePlaylist (POST /api/apple/playlists) writes a private playlist into the

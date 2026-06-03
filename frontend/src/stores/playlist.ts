@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type { Candidate, RankResult, Song } from '@/types'
+import { toCandidate } from '@/types'
 
 export type ItemStatus = 'new' | 'kept'
 
@@ -23,16 +24,9 @@ export const usePlaylistStore = defineStore('playlist', () => {
 
   const hasResult = computed(() => items.value.length > 0)
 
-  // Pool fed back into /rank during refinement.
-  const candidatesForRank = computed<Candidate[]>(() =>
-    [...pool.value.values()].map((s) => ({
-      id: s.id,
-      title: s.title,
-      artist: s.artist,
-      album: s.album,
-      genres: s.genres,
-    })),
-  )
+  // Pool fed back into /rank during refinement — carries year/lyrics/rating so
+  // F10 tweaks like "去掉有歌词的" act on real attributes (shared mapping).
+  const candidatesForRank = computed<Candidate[]>(() => [...pool.value.values()].map(toCandidate))
 
   const selectedSongs = computed<Song[]>(() =>
     items.value.filter((it) => selected.value.has(it.song.id)).map((it) => it.song),

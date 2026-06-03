@@ -19,12 +19,16 @@ import (
 
 // ── test scaffolding ────────────────────────────────────────────────────
 type fakeApple struct {
-	searchFn func(ctx context.Context, storefront, term string, limit int) ([]applemusic.Song, error)
-	createFn func(ctx context.Context, userToken, name, desc string, ids []string) (*applemusic.Playlist, error)
+	searchFn  func(ctx context.Context, storefront, term string, limit int) ([]applemusic.Song, error)
+	resolveFn func(ctx context.Context, storefront, title, artist string) (*applemusic.Song, bool, error)
+	createFn  func(ctx context.Context, userToken, name, desc string, ids []string) (*applemusic.Playlist, error)
 }
 
 func (f *fakeApple) SearchSongs(ctx context.Context, sf, term string, limit int) ([]applemusic.Song, error) {
 	return f.searchFn(ctx, sf, term, limit)
+}
+func (f *fakeApple) ResolveSong(ctx context.Context, sf, title, artist string) (*applemusic.Song, bool, error) {
+	return f.resolveFn(ctx, sf, title, artist)
 }
 func (f *fakeApple) CreatePlaylist(ctx context.Context, ut, n, d string, ids []string) (*applemusic.Playlist, error) {
 	return f.createFn(ctx, ut, n, d, ids)
@@ -38,6 +42,7 @@ func router(h *Handlers) *gin.Engine {
 	g.POST("/llm/test", h.TestLLM)
 	g.GET("/apple/developer-token", h.DeveloperToken)
 	g.POST("/apple/search", h.Search)
+	g.POST("/suggest", h.Suggest)
 	g.POST("/apple/playlists", h.CreatePlaylist)
 	return r
 }
@@ -104,6 +109,58 @@ func TestParseIntent_OK(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if len(resp.Data.Genres) != 1 || resp.Data.Genres[0] != "爵士" {
 		t.Errorf("intent = %+v", resp.Data)
+	}
+}
+
+// ── Option A: suggest → resolve ─────────────────────────────────────────
+func TestSuggest_ResolvesAndDedupes(t *testing.T) {
+	// Mock OpenAI-compatible upstream returns an intent + 3 song suggestions.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"{\"intent\":{\"genres\":[\"jazz\"]},\"songs\":[{\"title\":\"A\",\"artist\":\"X\"},{\"title\":\"B\",\"artist\":\"Y\"},{\"title\":\"C\",\"artist\":\"Z\"}]}"}}]}`)
+	}))
+	defer srv.Close()
+
+	fake := &fakeApple{
+		resolveFn: func(_ context.Context, _, title, _ string) (*applemusic.Song, bool, error) {
+			switch title {
+			case "C":
+				return nil, false, nil // unresolved → dropped
+			case "B":
+				return &applemusic.Song{ID: "shared", Title: "B"}, true, nil
+			default: // "A" — shares an id with B, exercising dedup
+				return &applemusic.Song{ID: "shared", Title: "A"}, true, nil
+			}
+		},
+	}
+	r := router(New(baseCfg(), nil, fake))
+	body := map[string]any{
+		"llm":        map[string]any{"provider": "openai-compat", "baseUrl": srv.URL, "model": "m"},
+		"storefront": "us",
+		"text":       "雨天爵士",
+	}
+	w := do(r, http.MethodPost, "/api/suggest", map[string]string{"X-LLM-Api-Key": "k"}, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Candidates []struct {
+				ID string `json:"id"`
+			} `json:"candidates"`
+			Suggested  int      `json:"suggested"`
+			Resolved   int      `json:"resolved"`
+			Unresolved []string `json:"unresolved"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Data.Suggested != 3 {
+		t.Errorf("suggested = %d, want 3", resp.Data.Suggested)
+	}
+	if len(resp.Data.Candidates) != 1 {
+		t.Errorf("candidates = %d, want 1 (A & B share an id; C unresolved)", len(resp.Data.Candidates))
+	}
+	if len(resp.Data.Unresolved) != 1 {
+		t.Errorf("unresolved = %v, want 1 (C)", resp.Data.Unresolved)
 	}
 }
 

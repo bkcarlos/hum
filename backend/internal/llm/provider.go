@@ -1,9 +1,12 @@
 // Package llm is the BYOK (bring-your-own-key) LLM layer.
 //
-// The golden rule (docs/requirements.md §2.1): the LLM never invents songs.
-// It only (1) parses natural language into a structured Intent, and (2) ranks
-// a pool of REAL Apple Music candidates. Three native adapters cover the first
-// batch of providers behind one internal interface:
+// The golden rule (docs/requirements.md §2.1): the LLM is NEVER the source of
+// truth for which songs exist. It (1) parses natural language into an Intent,
+// (2) ranks a pool of REAL Apple Music candidates, and (3) under Option A may
+// PROPOSE specific songs by name — but every proposal must be resolved against
+// the real catalog (see applemusic.Client.ResolveSong) and dropped if it does
+// not exist, so a fabricated/misattributed track never reaches the user.
+// Three native adapters cover the first batch of providers behind one interface:
 //
 //	OpenAICompat — OpenAI, DeepSeek, Qwen/DashScope, Moonshot, GLM, OpenRouter, …
 //	Anthropic    — Claude (/v1/messages, x-api-key + anthropic-version)
@@ -48,12 +51,17 @@ type Intent struct {
 }
 
 // Candidate is one real Apple Music track fed back to the LLM for ranking (F5).
+// Year/HasLyrics/ContentRating come from the catalog and let the ranker honor
+// refinements precisely (e.g. "去掉有歌词的" → lyrics, "不要露骨的" → rating).
 type Candidate struct {
-	ID     string   `json:"id"`
-	Title  string   `json:"title"`
-	Artist string   `json:"artist"`
-	Album  string   `json:"album,omitempty"`
-	Genres []string `json:"genres,omitempty"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Artist        string   `json:"artist"`
+	Album         string   `json:"album,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	Year          string   `json:"year,omitempty"`          // release year, for "newer/older"
+	HasLyrics     bool     `json:"hasLyrics"`               // false ⇒ instrumental
+	ContentRating string   `json:"contentRating,omitempty"` // "explicit" ⇒ filterable
 }
 
 // RankedSong is one LLM-selected track plus its recommendation reason.
@@ -69,6 +77,21 @@ type RankResult struct {
 	Songs        []RankedSong `json:"songs"`
 }
 
+// SongSuggestion is one LLM-proposed track (title + artist) to be resolved
+// against the real Apple catalog (Option A): the LLM proposes, Apple verifies.
+type SongSuggestion struct {
+	Title  string `json:"title"`
+	Artist string `json:"artist"`
+}
+
+// SuggestResult is the LLM's first-pass output (Option A): a structured intent
+// for display plus concrete real songs it recommends. Every suggestion MUST be
+// resolved against the catalog before reaching the user (golden rule preserved).
+type SuggestResult struct {
+	Intent      Intent           `json:"intent"`
+	Suggestions []SongSuggestion `json:"songs"`
+}
+
 // Provider is the single internal interface every adapter implements.
 type Provider interface {
 	// ParseIntent turns free text (+ optional seed artists) into an Intent.
@@ -76,6 +99,10 @@ type Provider interface {
 	// RankSongs selects & orders from candidates. Implementations MUST drop any
 	// returned id that is not present in candidates (golden-rule enforcement).
 	RankSongs(ctx context.Context, intent *Intent, candidates []Candidate, instruction string) (*RankResult, error)
+	// SuggestSongs proposes specific real songs for the request (Option A), plus a
+	// structured intent for display. Callers MUST resolve each suggestion against
+	// the catalog and drop anything that does not exist there (golden rule).
+	SuggestSongs(ctx context.Context, text string, seedArtists []string) (*SuggestResult, error)
 	// Ping issues a minimal request to validate the key / connectivity (F0 test).
 	Ping(ctx context.Context) error
 }

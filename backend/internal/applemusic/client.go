@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/bkcarlos/hum/internal/cache"
 )
@@ -22,14 +23,19 @@ const DefaultAPIBase = "https://api.music.apple.com"
 // IDs are storefront-specific: the SAME storefront must be used for search,
 // preview, and playlist creation (docs/requirements.md F4 id-consistency).
 type Song struct {
-	ID         string   `json:"id"`
-	Title      string   `json:"title"`
-	Artist     string   `json:"artist"`
-	Album      string   `json:"album"`
-	Genres     []string `json:"genres"`
-	DurationMs int      `json:"durationMs"`
-	ArtworkURL string   `json:"artworkUrl"`
-	PreviewURL string   `json:"previewUrl"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Artist        string   `json:"artist"`
+	Album         string   `json:"album"`
+	Genres        []string `json:"genres"`
+	DurationMs    int      `json:"durationMs"`
+	ArtworkURL    string   `json:"artworkUrl"`
+	PreviewURL    string   `json:"previewUrl"`
+	ReleaseDate   string   `json:"releaseDate,omitempty"`   // e.g. "1959-08-17" or "1959"
+	ContentRating string   `json:"contentRating,omitempty"` // "clean" | "explicit" | ""
+	HasLyrics     bool     `json:"hasLyrics"`               // false ⇒ likely instrumental
+	ISRC          string   `json:"isrc,omitempty"`          // recording code; key for 3rd-party audio features
+	Composer      string   `json:"composer,omitempty"`
 }
 
 // Playlist is the result of a library playlist creation (F7).
@@ -103,6 +109,61 @@ func (c *Client) SearchSongs(ctx context.Context, storefront, term string, limit
 	}
 	c.cache.Set(cacheKey, out)
 	return out, nil
+}
+
+// ResolveSong grounds an LLM-proposed (title, artist) against the real catalog
+// (Option A): it searches the user's storefront and returns the best track whose
+// title — and, when possible, artist — matches. ok=false means nothing plausibly
+// matched, so a fabricated or misattributed suggestion is dropped; Apple stays
+// the source of truth for what actually exists (golden rule).
+func (c *Client) ResolveSong(ctx context.Context, storefront, title, artist string) (*Song, bool, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, false, nil
+	}
+	term := strings.TrimSpace(artist + " " + title)
+	songs, err := c.SearchSongs(ctx, storefront, term, 10)
+	if err != nil {
+		return nil, false, err
+	}
+	wantTitle, wantArtist := normalizeMatch(title), normalizeMatch(artist)
+	var titleOnly *Song
+	for i := range songs {
+		if !titleMatches(normalizeMatch(songs[i].Title), wantTitle) {
+			continue
+		}
+		if wantArtist != "" && strings.Contains(normalizeMatch(songs[i].Artist), wantArtist) {
+			return &songs[i], true, nil // strongest: title + artist agree
+		}
+		if titleOnly == nil {
+			titleOnly = &songs[i]
+		}
+	}
+	if titleOnly != nil {
+		return titleOnly, true, nil // title matched; artist may differ (e.g. cross-language name)
+	}
+	return nil, false, nil
+}
+
+// normalizeMatch lowercases and strips everything but letters/digits (spaces and
+// punctuation included), so "Blue in Green" ~ "blueingreen"; CJK is preserved.
+func normalizeMatch(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// titleMatches treats equality or either-contains-other as a match, tolerating
+// suffixes like " (Live)" / " - Remastered".
+func titleMatches(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return a == b || strings.Contains(a, b) || strings.Contains(b, a)
 }
 
 // CreatePlaylist creates a private playlist in the user's library and adds the
@@ -199,6 +260,11 @@ type songResource struct {
 		AlbumName        string   `json:"albumName"`
 		GenreNames       []string `json:"genreNames"`
 		DurationInMillis int      `json:"durationInMillis"`
+		ReleaseDate      string   `json:"releaseDate"`
+		ContentRating    string   `json:"contentRating"`
+		HasLyrics        bool     `json:"hasLyrics"`
+		ISRC             string   `json:"isrc"`
+		ComposerName     string   `json:"composerName"`
 		Artwork          struct {
 			URL string `json:"url"`
 		} `json:"artwork"`
@@ -210,13 +276,18 @@ type songResource struct {
 
 func (r songResource) toSong() Song {
 	s := Song{
-		ID:         r.ID,
-		Title:      r.Attributes.Name,
-		Artist:     r.Attributes.ArtistName,
-		Album:      r.Attributes.AlbumName,
-		Genres:     r.Attributes.GenreNames,
-		DurationMs: r.Attributes.DurationInMillis,
-		ArtworkURL: renderArtwork(r.Attributes.Artwork.URL, 240, 240),
+		ID:            r.ID,
+		Title:         r.Attributes.Name,
+		Artist:        r.Attributes.ArtistName,
+		Album:         r.Attributes.AlbumName,
+		Genres:        r.Attributes.GenreNames,
+		DurationMs:    r.Attributes.DurationInMillis,
+		ArtworkURL:    renderArtwork(r.Attributes.Artwork.URL, 240, 240),
+		ReleaseDate:   r.Attributes.ReleaseDate,
+		ContentRating: r.Attributes.ContentRating,
+		HasLyrics:     r.Attributes.HasLyrics,
+		ISRC:          r.Attributes.ISRC,
+		Composer:      r.Attributes.ComposerName,
 	}
 	if len(r.Attributes.Previews) > 0 {
 		s.PreviewURL = r.Attributes.Previews[0].URL

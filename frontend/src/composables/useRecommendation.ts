@@ -4,7 +4,8 @@ import { useLlmConfigStore } from '@/stores/llmConfig'
 import { useAppleStore } from '@/stores/apple'
 import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
-import type { ApiError, Candidate, Song } from '@/types'
+import type { ApiError, Candidate, Intent, Song } from '@/types'
+import { toCandidate } from '@/types'
 
 // What to re-run if the user hits "重试" after a failure. The core ops
 // (runFull/rerank/researchCore) never touch the transcript, so a retry repeats
@@ -14,9 +15,10 @@ type LastAction =
   | { kind: 'rerank'; instruction: string }
   | { kind: 'research' }
 
-// Orchestrates the F2→F5 pipeline (+ F10 refinement + F3 re-search), keeping the
-// left conversation store and right playlist store in sync. ConversationPane is
-// the single consumer, so the local reactive state below is effectively a unit.
+// Orchestrates the pipeline (Option A): the LLM proposes real songs, the backend
+// resolves them against Apple Music into a grounded pool, then the LLM ranks that
+// pool. Keeps the left conversation store and right playlist store in sync.
+// ConversationPane is the single consumer, so the local reactive state is a unit.
 export function useRecommendation() {
   const llm = useLlmConfigStore()
   const apple = useAppleStore()
@@ -40,8 +42,8 @@ export function useRecommendation() {
     convo.addAssistant('出错了：' + msg)
   }
 
-  // Full pipeline: parse intent → search → rank. No transcript write (callers
-  // own the chat flow), so it doubles as the retry unit.
+  // Full pipeline: LLM suggests songs → resolve against Apple → rank. No transcript
+  // write (callers own the chat flow), so it doubles as the retry unit.
   async function runFull(text: string, seeds: string[]) {
     const blocked = precondition()
     if (blocked) {
@@ -51,19 +53,23 @@ export function useRecommendation() {
     loading.value = true
     lastError.value = ''
     try {
-      stage.value = '解析意图…'
-      const intent = await api.parseIntent(llm.body, llm.apiKey, text, seeds)
+      stage.value = 'AI 选歌…'
+      const { intent, candidates, suggested, resolved, unresolved } = await api.suggest(
+        llm.body,
+        llm.apiKey,
+        apple.storefront,
+        text,
+        seeds,
+      )
       convo.setIntent(intent)
-
-      stage.value = '检索候选…'
-      const { candidates } = await api.searchCandidates(apple.storefront, intent)
 
       stage.value = '智能排序…'
       const rank = await api.rankSongs(llm.body, llm.apiKey, intent, toCandidates(candidates))
       playlist.setRecommendation(candidates, rank)
 
+      const miss = unresolved.length ? `（AI 建议 ${suggested} 首，在 Apple Music 命中 ${resolved} 首）` : ''
       convo.addAssistant(
-        `为你挑了 ${rank.songs.length} 首：「${rank.playlist_name}」。右侧可试听、勾选；也可以继续告诉我怎么调整（如“去掉有歌词的”“再慢一点”），或编辑左侧条件后重搜。`,
+        `为你挑了 ${rank.songs.length} 首：「${rank.playlist_name}」${miss}。右侧可试听、勾选；也可以继续告诉我怎么调整（如“去掉有歌词的”“再慢一点”），或编辑左侧条件后重搜。`,
       )
     } catch (e) {
       fail(e)
@@ -96,8 +102,9 @@ export function useRecommendation() {
     }
   }
 
-  // F3: re-run search + rank from the CURRENT (user-edited) intent chips, then
-  // override the list while keeping surviving selections.
+  // F3: re-run the pipeline from the CURRENT (user-edited) intent chips — re-suggest
+  // songs honoring the trimmed conditions, then override the list while keeping
+  // surviving selections.
   async function researchCore() {
     const blocked = precondition()
     if (blocked) {
@@ -111,15 +118,21 @@ export function useRecommendation() {
     loading.value = true
     lastError.value = ''
     try {
-      stage.value = '按条件检索…'
-      const { candidates } = await api.searchCandidates(apple.storefront, convo.intent)
+      stage.value = 'AI 选歌…'
+      const { candidates } = await api.suggest(
+        llm.body,
+        llm.apiKey,
+        apple.storefront,
+        intentToText(convo.intent),
+        convo.intent.seed_artists,
+      )
 
       stage.value = '智能排序…'
       const rank = await api.rankSongs(llm.body, llm.apiKey, convo.intent, toCandidates(candidates))
       playlist.applyRefinement(rank, candidates) // replace pool, keep selected
 
       const tail = playlist.notice ? ` ${playlist.notice}` : ''
-      convo.addAssistant(`已按调整后的条件重新检索：「${rank.playlist_name}」，共 ${rank.songs.length} 首。${tail}`)
+      convo.addAssistant(`已按调整后的条件重新挑选：「${rank.playlist_name}」，共 ${rank.songs.length} 首。${tail}`)
     } catch (e) {
       fail(e)
     } finally {
@@ -161,5 +174,14 @@ export function useRecommendation() {
 }
 
 function toCandidates(songs: Song[]): Candidate[] {
-  return songs.map((s) => ({ id: s.id, title: s.title, artist: s.artist, album: s.album, genres: s.genres }))
+  return songs.map(toCandidate)
+}
+
+// intentToText turns user-edited intent chips back into a natural-language request,
+// so an F3 re-search re-prompts the LLM (Option A) honoring the trimmed conditions.
+function intentToText(i: Intent): string {
+  const parts = [...i.genres, ...i.moods, ...i.instruments, ...i.keywords]
+  if (i.tempo) parts.push(i.tempo === 'slow' ? '慢节奏' : i.tempo === 'fast' ? '快节奏' : '中速')
+  const seeds = i.seed_artists.length ? `，可参考歌手：${i.seed_artists.join('、')}` : ''
+  return `请推荐符合这些条件的歌：${parts.join('、')}${seeds}`
 }

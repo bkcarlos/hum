@@ -85,6 +85,7 @@ func main() {
 		api.POST("/llm/test", h.TestLLM)
 		api.POST("/intent", h.ParseIntent)
 		api.POST("/rank", h.Rank)
+		api.POST("/suggest", h.Suggest) // Option A: LLM proposes songs → resolved against Apple
 	}
 
 	// 方案 1 (single-service): also serve the built frontend from WebDir with SPA

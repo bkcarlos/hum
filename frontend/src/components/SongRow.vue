@@ -23,6 +23,8 @@ const emit = defineEmits<{ toggleSelect: []; togglePlay: [] }>()
         <span class="title" :title="item.song.title">{{ item.song.title }}</span>
         <n-tag v-if="item.status === 'new'" size="tiny" type="info" :bordered="false">新</n-tag>
         <n-tag v-else size="tiny" :bordered="false">保留</n-tag>
+        <n-tag v-if="item.song.contentRating === 'explicit'" size="tiny" type="warning" :bordered="false">E</n-tag>
+        <n-tag v-if="item.song.hasLyrics === false" size="tiny" :bordered="false">纯音乐</n-tag>
       </div>
       <div class="artist">{{ item.song.artist }}</div>
       <div v-if="item.reason" class="reason">{{ item.reason }}</div>

@@ -20,6 +20,7 @@ const musicUserTokenHeader = "Music-User-Token"
 // lets us unit-test Search dedup/cap without a live Apple account.
 type AppleService interface {
 	SearchSongs(ctx context.Context, storefront, term string, limit int) ([]applemusic.Song, error)
+	ResolveSong(ctx context.Context, storefront, title, artist string) (*applemusic.Song, bool, error)
 	CreatePlaylist(ctx context.Context, userToken, name, description string, catalogSongIDs []string) (*applemusic.Playlist, error)
 }
 

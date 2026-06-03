@@ -28,6 +28,8 @@ func TestSearchSongs_ParsesAndAuthorizes(t *testing.T) {
 		_, _ = io.WriteString(w, `{"results":{"songs":{"data":[{"id":"123","attributes":{`+
 			`"name":"Blue in Green","artistName":"Miles Davis","albumName":"Kind of Blue",`+
 			`"genreNames":["Jazz"],"durationInMillis":327000,`+
+			`"hasLyrics":true,"contentRating":"explicit","releaseDate":"1959-08-17",`+
+			`"isrc":"USSM15900001","composerName":"Bill Evans",`+
 			`"artwork":{"url":"https://ex/{w}x{h}.jpg"},"previews":[{"url":"https://ex/p.m4a"}]}}]}}}`)
 	}))
 	defer srv.Close()
@@ -49,6 +51,9 @@ func TestSearchSongs_ParsesAndAuthorizes(t *testing.T) {
 	}
 	if s.PreviewURL == "" {
 		t.Error("expected a preview URL")
+	}
+	if !s.HasLyrics || s.ContentRating != "explicit" || s.ReleaseDate != "1959-08-17" || s.ISRC != "USSM15900001" || s.Composer != "Bill Evans" {
+		t.Errorf("extended attrs not parsed: %+v", s)
 	}
 	if !strings.HasPrefix(auth, "Bearer ") {
 		t.Errorf("Authorization = %q, want Bearer <token>", auth)
@@ -74,6 +79,26 @@ func TestSearchSongs_UsesCache(t *testing.T) {
 	_, _ = c.SearchSongs(context.Background(), "us", "jazz", 25)
 	if calls != 1 {
 		t.Errorf("upstream called %d times, want 1 (cache hit expected)", calls)
+	}
+}
+
+func TestResolveSong_VerifiesMatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"results":{"songs":{"data":[`+
+			`{"id":"1","attributes":{"name":"Blue in Green","artistName":"Miles Davis"}},`+
+			`{"id":"2","attributes":{"name":"So What","artistName":"Miles Davis"}}]}}}`)
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL, 0)
+
+	// Exact title + artist resolves to the matching track.
+	s, ok, err := c.ResolveSong(context.Background(), "us", "Blue in Green", "Miles Davis")
+	if err != nil || !ok || s == nil || s.ID != "1" {
+		t.Fatalf("expected match id=1, got ok=%v song=%+v err=%v", ok, s, err)
+	}
+	// A title absent from the catalog results is dropped (golden rule: Apple decides).
+	if _, ok, _ := c.ResolveSong(context.Background(), "us", "A Tune That Does Not Exist", "Miles Davis"); ok {
+		t.Errorf("expected no match for a title absent from results")
 	}
 }
 

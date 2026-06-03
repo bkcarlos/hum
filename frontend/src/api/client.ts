@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios'
-import type { ApiError, Candidate, Intent, LlmBody, RankResult, Song } from '@/types'
+import type { ApiError, Candidate, Intent, LlmBody, RankResult, Song, SuggestResult } from '@/types'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? '/api',
@@ -31,6 +31,18 @@ export function testLlm(llm: LlmBody, apiKey: string): Promise<{ ok: boolean }> 
 
 export function parseIntent(llm: LlmBody, apiKey: string, text: string, seedArtists: string[]): Promise<Intent> {
   return http.post('/intent', { llm, text, seedArtists }, keyHeader(apiKey))
+}
+
+/** Option A: the LLM proposes real songs for the request; the backend resolves
+ *  each against the user's storefront so only tracks that exist reach us. */
+export function suggest(
+  llm: LlmBody,
+  apiKey: string,
+  storefront: string,
+  text: string,
+  seedArtists: string[],
+): Promise<SuggestResult> {
+  return http.post('/suggest', { llm, storefront, text, seedArtists }, keyHeader(apiKey))
 }
 
 export function rankSongs(

@@ -9,7 +9,8 @@ import (
 
 // chatFn is the one provider-specific primitive each adapter supplies: send a
 // system + user prompt, get back the assistant's text. ParseIntent/RankSongs/
-// Ping are written once on top of it, so adapters only implement transport.
+// SuggestSongs/Ping are written once on top of it, so adapters only implement
+// transport.
 type chatFn func(ctx context.Context, system, user string) (string, error)
 
 // core implements Provider's high-level methods over a chatFn. Adapters embed
@@ -48,13 +49,48 @@ func (c core) ParseIntent(ctx context.Context, text string, seedArtists []string
 	return &intent, nil
 }
 
+const suggestSystem = `You are a music expert. From the user's request, recommend SPECIFIC, REAL songs that actually exist, and extract a short structured intent for display.
+Output JSON ONLY — no prose, no code fences. Schema:
+{"intent":{"moods":[],"genres":[],"instruments":[],"tempo":"","keywords":[],"seed_artists":[]},"songs":[{"title":"","artist":""}]}
+Rules:
+- "songs": 20-30 real songs that genuinely fit the request. Use the exact song title and its primary performing artist.
+- Do NOT invent songs or misattribute artists; if unsure a track exists, omit it. Diversify artists; no duplicates.
+- Prefer widely-available tracks (likely on Apple Music) and honor any seed artists/songs the user gives.
+- "intent.tempo" is one of "slow","medium","fast", or "". Keep intent arrays concise (<=6 each).
+- Preserve the user's language in intent free-text; keep song titles and artist names in their original/native form.`
+
+// SuggestSongs is the Option A first pass: ask the LLM to name real songs (plus a
+// structured intent for display). The names are only PROPOSALS — the caller must
+// resolve each against the catalog so fabricated/misattributed tracks are dropped.
+func (c core) SuggestSongs(ctx context.Context, text string, seedArtists []string) (*SuggestResult, error) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "User request:\n%s\n", strings.TrimSpace(text))
+	if len(seedArtists) > 0 {
+		fmt.Fprintf(&b, "\nSeed artists/songs to lean toward: %s\n", strings.Join(seedArtists, ", "))
+	}
+	raw, err := c.chat(ctx, suggestSystem, b.String())
+	if err != nil {
+		return nil, err
+	}
+	var res SuggestResult
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &res); err != nil {
+		return nil, fmt.Errorf("llm: could not parse suggestions JSON: %w", err)
+	}
+	// Carry through explicit seeds even if the model omitted them from the intent.
+	if len(res.Intent.SeedArtists) == 0 && len(seedArtists) > 0 {
+		res.Intent.SeedArtists = seedArtists
+	}
+	return &res, nil
+}
+
 const rankSystem = `You are a music curator. From a fixed pool of REAL candidate songs, select and order the best matches for the user's intent, then name the playlist.
 Output JSON ONLY — no prose, no code fences. Schema:
 {"playlist_name":"","description":"","songs":[{"id":"<candidate id>","reason":"<short why, in the user's language>"}]}
 HARD RULES:
 - Every "id" MUST be copied verbatim from the candidate pool. NEVER invent an id or a song.
 - Pick 12-25 songs unless the pool is smaller. Order best-fit first.
-- "reason" is one short sentence. "playlist_name" is evocative and concise.`
+- "reason" is one short sentence. "playlist_name" is evocative and concise.
+- Each candidate may carry year/lyrics/rating. Honor refinement instructions precisely with them: instrumental or "去掉有歌词的" → keep only lyrics=no; "不要露骨的" / no explicit → drop rating=explicit; newer/older → use year.`
 
 func (c core) RankSongs(ctx context.Context, intent *Intent, candidates []Candidate, instruction string) (*RankResult, error) {
 	intentJSON, _ := json.Marshal(intent)
@@ -73,6 +109,17 @@ func (c core) RankSongs(ctx context.Context, intent *Intent, candidates []Candid
 		}
 		if len(s.Genres) > 0 {
 			fmt.Fprintf(&b, " | genres=%s", strings.Join(s.Genres, "/"))
+		}
+		if s.Year != "" {
+			fmt.Fprintf(&b, " | year=%s", s.Year)
+		}
+		if s.HasLyrics {
+			b.WriteString(" | lyrics=yes")
+		} else {
+			b.WriteString(" | lyrics=no")
+		}
+		if s.ContentRating != "" {
+			fmt.Fprintf(&b, " | rating=%s", s.ContentRating)
 		}
 		b.WriteByte('\n')
 	}

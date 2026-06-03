@@ -34,15 +34,39 @@ export interface Song {
   durationMs: number
   artworkUrl: string
   previewUrl: string
+  releaseDate?: string // "1959-08-17" or "1959"
+  contentRating?: string // "clean" | "explicit"
+  hasLyrics?: boolean // false ⇒ likely instrumental
+  isrc?: string
+  composer?: string
 }
 
-/** Candidate shape sent to /rank (subset of Song). */
+/** Candidate shape sent to /rank (subset of Song + ranking-relevant attributes). */
 export interface Candidate {
   id: string
   title: string
   artist: string
   album?: string
   genres?: string[]
+  year?: string
+  hasLyrics?: boolean
+  contentRating?: string
+}
+
+/** Map a catalog Song to the Candidate sent to /rank, carrying the ranking-
+ *  relevant attributes (year/lyrics/rating) so refinements like "去掉有歌词的"
+ *  and "不要露骨的" act on real data. Shared by the first rank and F10 reranks. */
+export function toCandidate(s: Song): Candidate {
+  return {
+    id: s.id,
+    title: s.title,
+    artist: s.artist,
+    album: s.album,
+    genres: s.genres,
+    year: s.releaseDate ? s.releaseDate.slice(0, 4) : undefined,
+    hasLyrics: s.hasLyrics,
+    contentRating: s.contentRating,
+  }
 }
 
 export interface RankedSong {
@@ -55,6 +79,23 @@ export interface RankResult {
   playlist_name: string
   description: string
   songs: RankedSong[]
+}
+
+/** One LLM-proposed track to resolve against Apple Music (Option A). */
+export interface SongSuggestion {
+  title: string
+  artist: string
+}
+
+/** Result of /suggest (Option A): a grounded candidate pool (every track verified
+ *  to exist on Apple Music) plus the intent for display and resolution stats. */
+export interface SuggestResult {
+  storefront: string
+  intent: Intent
+  candidates: Song[]
+  suggested: number
+  resolved: number
+  unresolved: string[]
 }
 
 /** Normalized API error surfaced to the UI. */
