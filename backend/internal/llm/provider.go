@@ -92,6 +92,14 @@ type SuggestResult struct {
 	Suggestions []SongSuggestion `json:"songs"`
 }
 
+// ExampleHints carries lightweight, non-identifying personalization signals for
+// generating empty-state example prompts ("千人千面"): the current context
+// (time/scene/locale) and the user's recent local tastes. No account or PII.
+type ExampleHints struct {
+	Context string   `json:"context"`
+	Tastes  []string `json:"tastes"`
+}
+
 // Provider is the single internal interface every adapter implements.
 type Provider interface {
 	// ParseIntent turns free text (+ optional seed artists) into an Intent.
@@ -103,6 +111,9 @@ type Provider interface {
 	// structured intent for display. Callers MUST resolve each suggestion against
 	// the catalog and drop anything that does not exist there (golden rule).
 	SuggestSongs(ctx context.Context, text string, seedArtists []string) (*SuggestResult, error)
+	// SuggestExamples generates short natural-language example prompts personalized
+	// to the given context + recent tastes (empty-state inspiration; names no songs).
+	SuggestExamples(ctx context.Context, hints ExampleHints, count int) ([]string, error)
 	// Ping issues a minimal request to validate the key / connectivity (F0 test).
 	Ping(ctx context.Context) error
 }

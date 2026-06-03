@@ -43,6 +43,7 @@ func router(h *Handlers) *gin.Engine {
 	g.GET("/apple/developer-token", h.DeveloperToken)
 	g.POST("/apple/search", h.Search)
 	g.POST("/suggest", h.Suggest)
+	g.POST("/examples", h.Examples)
 	g.POST("/apple/playlists", h.CreatePlaylist)
 	return r
 }
@@ -161,6 +162,18 @@ func TestSuggest_ResolvesAndDedupes(t *testing.T) {
 	}
 	if len(resp.Data.Unresolved) != 1 {
 		t.Errorf("unresolved = %v, want 1 (C)", resp.Data.Unresolved)
+	}
+}
+
+func TestExamples_RequiresKey(t *testing.T) {
+	r := router(New(baseCfg(), nil, nil))
+	body := map[string]any{
+		"llm":     map[string]any{"provider": "openai-compat", "baseUrl": "https://x", "model": "m"},
+		"context": "周五深夜",
+	}
+	w := do(r, http.MethodPost, "/api/examples", nil, body) // no X-LLM-Api-Key
+	if w.Code != http.StatusBadRequest || errCode(w) != "no_key" {
+		t.Fatalf("got %d %s, want 400 no_key", w.Code, errCode(w))
 	}
 }
 

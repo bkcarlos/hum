@@ -121,6 +121,31 @@ func (h *Handlers) Rank(c *gin.Context) {
 	httpx.OK(c, res)
 }
 
+// Examples (POST /api/examples) generates personalized empty-state example
+// prompts ("千人千面") from the client's context + recent local tastes (F2).
+func (h *Handlers) Examples(c *gin.Context) {
+	var body struct {
+		LLM     llmConfigDTO `json:"llm"`
+		Context string       `json:"context"`
+		Tastes  []string     `json:"tastes"`
+		Count   int          `json:"count"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "请求体无效。")
+		return
+	}
+	p, ok := h.provider(c, body.LLM)
+	if !ok {
+		return
+	}
+	ex, err := p.SuggestExamples(c.Request.Context(), llm.ExampleHints{Context: body.Context, Tastes: body.Tastes}, body.Count)
+	if err != nil {
+		writeLLMError(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"examples": ex})
+}
+
 // writeLLMError maps a normalized *llm.APIError to an HTTP status + code so the
 // frontend can show a precise message (key invalid / quota / rate-limit / …).
 func writeLLMError(c *gin.Context, err error) {

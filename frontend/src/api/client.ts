@@ -45,6 +45,18 @@ export function suggest(
   return http.post('/suggest', { llm, storefront, text, seedArtists }, keyHeader(apiKey))
 }
 
+/** Generate personalized empty-state example prompts ("千人千面") from local
+ *  context + recent tastes. Inspiration text only — no songs named. */
+export function genExamples(
+  llm: LlmBody,
+  apiKey: string,
+  context: string,
+  tastes: string[],
+  count: number,
+): Promise<{ examples: string[] }> {
+  return http.post('/examples', { llm, context, tastes, count }, keyHeader(apiKey))
+}
+
 export function rankSongs(
   llm: LlmBody,
   apiKey: string,

@@ -6,6 +6,7 @@ import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
 import type { ApiError, Candidate, Intent, Song } from '@/types'
 import { toCandidate } from '@/types'
+import { recordTastes } from '@/data/personalize'
 
 // What to re-run if the user hits "重试" after a failure. The core ops
 // (runFull/rerank/researchCore) never touch the transcript, so a retry repeats
@@ -62,6 +63,7 @@ export function useRecommendation() {
         seeds,
       )
       convo.setIntent(intent)
+      recordTastes([...intent.genres, ...intent.moods, ...intent.keywords]) // local taste history (千人千面)
 
       stage.value = '智能排序…'
       const rank = await api.rankSongs(llm.body, llm.apiKey, intent, toCandidates(candidates))

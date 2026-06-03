@@ -77,6 +77,19 @@ func TestRankSongs_PromptIncludesAttributes(t *testing.T) {
 	}
 }
 
+func TestSuggestExamples_ParsesList(t *testing.T) {
+	c := core{chat: func(_ context.Context, _, _ string) (string, error) {
+		return `{"examples":["深夜加班的电子","雨天慵懒爵士","周末早晨轻快"]}`, nil
+	}}
+	ex, err := c.SuggestExamples(context.Background(), ExampleHints{Context: "周五深夜", Tastes: []string{"爵士"}}, 4)
+	if err != nil {
+		t.Fatalf("SuggestExamples: %v", err)
+	}
+	if len(ex) != 3 || ex[0] != "深夜加班的电子" {
+		t.Fatalf("examples = %v", ex)
+	}
+}
+
 func TestExtractJSON(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{`{"a":1}`, `{"a":1}`},

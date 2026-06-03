@@ -83,6 +83,49 @@ func (c core) SuggestSongs(ctx context.Context, text string, seedArtists []strin
 	return &res, nil
 }
 
+const exampleSystem = `You write SHORT, natural-language music-request examples a user could type into a "describe what you want to hear" box.
+Output JSON ONLY — no prose, no code fences. Schema: {"examples":["",""]}
+Rules:
+- Each example is ONE concise phrase describing a mood / scene / style, like "适合雨天加班的慵懒爵士，别太吵". Aim for 8-22 characters. NEVER name a song or artist.
+- Make them feel tailored to the given context and recent tastes; vary the mood/genre/scene across them; no duplicates.
+- Write in the user's language (default Chinese unless the context clearly indicates otherwise).`
+
+// SuggestExamples generates personalized empty-state example prompts ("千人千面")
+// from a context string + recent taste tokens. Pure inspiration text — no songs.
+func (c core) SuggestExamples(ctx context.Context, hints ExampleHints, count int) ([]string, error) {
+	if count <= 0 {
+		count = 4
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Generate %d example prompts.\n", count)
+	if s := strings.TrimSpace(hints.Context); s != "" {
+		fmt.Fprintf(&b, "Current context: %s\n", s)
+	}
+	if len(hints.Tastes) > 0 {
+		fmt.Fprintf(&b, "The user has recently leaned toward: %s. Bias toward these but keep variety.\n", strings.Join(hints.Tastes, ", "))
+	}
+	raw, err := c.chat(ctx, exampleSystem, b.String())
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Examples []string `json:"examples"`
+	}
+	if err := json.Unmarshal([]byte(extractJSON(raw)), &res); err != nil {
+		return nil, fmt.Errorf("llm: could not parse examples JSON: %w", err)
+	}
+	out := make([]string, 0, count)
+	for _, e := range res.Examples {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+		if len(out) >= count {
+			break
+		}
+	}
+	return out, nil
+}
+
 const rankSystem = `You are a music curator. From a fixed pool of REAL candidate songs, select and order the best matches for the user's intent, then name the playlist.
 Output JSON ONLY — no prose, no code fences. Schema:
 {"playlist_name":"","description":"","songs":[{"id":"<candidate id>","reason":"<short why, in the user's language>"}]}
