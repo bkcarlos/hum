@@ -1,24 +1,61 @@
 import Foundation
 import Combine
+import MusicKit
 
-/// Apple Music 授权态。
-/// **M-i1 为桩**：storefront 固定 "us"、未授权（试听走 AVPlayer 预览，无需授权）。
-/// M-i2 接入原生 MusicKit：`MusicAuthorization.request()` + 真实 storefront + 订阅能力检测。
+/// Apple Music 授权态 + MusicKit 操作代理（授权 / storefront / 完整播放 / 建歌单）。
 @MainActor
 final class MusicAuthStore: ObservableObject {
     @Published private(set) var authorized: Bool = false
-    @Published private(set) var storefront: String = "us"
+    @Published var storefront: String = "us"          // 未授权时的默认；授权后取真实值
     @Published private(set) var connecting: Bool = false
     @Published var error: String = ""
-    @Published private(set) var canPlayFull: Bool = false   // 是否可完整播放（订阅用户，M-i2）
+    @Published private(set) var canPlayFull: Bool = false
 
-    /// M-i1 占位。真实授权在 M-i2 用 MusicKit 实现。
+    private let music: MusicService
+
+    init(music: MusicService) {
+        self.music = music
+        authorized = music.authorizationStatus == .authorized
+    }
+
+    /// 连接：请求授权 → 取真实 storefront + 订阅能力。
     func connect() async {
-        error = "完整 Apple Music 接入（授权 / 完整播放 / 建歌单）将在下一里程碑提供；当前可试听 30s 预览。"
+        connecting = true
+        error = ""
+        let status = await music.requestAuthorization()
+        authorized = (status == .authorized)
+        if authorized {
+            if let sf = try? await music.currentStorefront() { storefront = sf }
+            canPlayFull = await music.canPlayCatalogContent()
+        } else {
+            error = "未获得 Apple Music 授权。可在系统「设置 > Hum」里允许，或继续用 30s 预览。"
+        }
+        connecting = false
     }
 
     func disconnect() async {
         authorized = false
         canPlayFull = false
+    }
+
+    /// 完整播放（订阅用户）。
+    func playFull(catalogIDs: [String], startAt index: Int = 0) async {
+        do {
+            try await music.playFull(catalogIDs: catalogIDs, startAt: index)
+        } catch {
+            self.error = "完整播放失败：\(error.localizedDescription)"
+        }
+    }
+
+    func pauseFull() { music.pause() }
+
+    /// 建歌单。返回 (打开 URL, 错误文案)。
+    func createPlaylist(name: String, description: String, catalogIDs: [String]) async -> (url: URL?, error: String?) {
+        do {
+            let r = try await music.createPlaylist(name: name, description: description, catalogIDs: catalogIDs)
+            return (r.url, nil)
+        } catch {
+            return (nil, "建歌单失败：\(error.localizedDescription)")
+        }
     }
 }

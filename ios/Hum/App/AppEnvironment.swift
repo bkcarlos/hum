@@ -17,7 +17,7 @@ final class AppEnvironment: ObservableObject {
         let llm = LLMConfigStore(api: api)
         let convo = ConversationStore()
         let playlist = PlaylistStore()
-        let music = MusicAuthStore()
+        let music = MusicAuthStore(music: MusicService())
         let preview = PreviewPlayer()
 
         self.api = api

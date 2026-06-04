@@ -55,6 +55,7 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var settingsButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) { AppleConnectView() }
         ToolbarItem(placement: .topBarTrailing) {
             Button { showSettings = true } label: { Image(systemName: "gearshape") }
         }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 右侧歌单：通知 / 歌单名 / 试听控件 / 全选 / 列表 / 建歌单。
+/// 右侧歌单：通知 / 歌单名 / 试听+完整播放 / 全选 / 列表 / 建歌单。
 struct PlaylistView: View {
     @EnvironmentObject private var playlist: PlaylistStore
     @EnvironmentObject private var preview: PreviewPlayer
@@ -8,6 +8,7 @@ struct PlaylistView: View {
 
     @State private var creating = false
     @State private var createMsg = ""
+    @State private var createdURL: URL?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,8 +34,16 @@ struct PlaylistView: View {
             }
             TextField("歌单名", text: $playlist.playlistName)
                 .textFieldStyle(.roundedBorder).font(.subheadline)
-            HStack {
+            HStack(spacing: 12) {
                 TransportControls()
+                if music.canPlayFull {
+                    Button {
+                        Task { await music.playFull(catalogIDs: playlist.orderedSongs.map { $0.id }) }
+                    } label: {
+                        Label("完整播放", systemImage: "play.fill").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(BrandTheme.primary)
+                }
                 Spacer()
                 Button(playlist.allSelected ? "取消全选" : "全选") {
                     playlist.allSelected ? playlist.clearSelection() : playlist.selectAll()
@@ -67,6 +76,9 @@ struct PlaylistView: View {
             if !createMsg.isEmpty {
                 Text(createMsg).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
+            if let createdURL {
+                Link("在 Apple Music 中打开 ↗", destination: createdURL).font(.caption)
+            }
             Button {
                 Task { await create() }
             } label: {
@@ -94,13 +106,28 @@ struct PlaylistView: View {
         .padding()
     }
 
-    /// M-i1：建歌单（MusicLibrary）在 M-i3 接入；此处先给出说明。
+    /// 建**私有**歌单（MusicKit）。未授权时先连接。
     private func create() async {
         creating = true
-        await music.connect()
-        createMsg = music.error.isEmpty
-            ? "建歌单将在后续里程碑接入原生 MusicKit。"
-            : music.error
+        createMsg = ""
+        createdURL = nil
+        if !music.authorized { await music.connect() }
+        guard music.authorized else {
+            createMsg = music.error.isEmpty ? "请先连接 Apple Music 再建歌单。" : music.error
+            creating = false
+            return
+        }
+        let ids = playlist.selectedSongs.map { $0.id }
+        let name = playlist.playlistName.isEmpty ? "我的 AI 歌单" : playlist.playlistName
+        let (url, err) = await music.createPlaylist(
+            name: name, description: playlist.playlistDescription, catalogIDs: ids
+        )
+        if let err {
+            createMsg = err
+        } else {
+            createdURL = url
+            createMsg = "已在你的 Apple Music 资料库创建「\(name)」（私有）。"
+        }
         creating = false
     }
 }
