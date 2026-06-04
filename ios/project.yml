@@ -1,0 +1,45 @@
+# XcodeGen 工程清单。生成工程：cd ios && xcodegen generate && open Hum.xcodeproj
+# .xcodeproj 不入库（见 .gitignore），本文件 + Hum/ 源码为唯一事实来源。
+name: Hum
+options:
+  bundleIdPrefix: com.example.hum
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.5.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: ""            # ← 填你的 10 位 Apple Team ID（自动签名用）
+    CODE_SIGN_STYLE: Automatic
+    # 后端 API 基址：默认生产 Cloud Run；本地联调可改成 http://localhost:8080/api（需在 Info 加 ATS 例外）
+    HUM_API_BASE: "https://hum-github-638000578981.asia-east2.run.app/api"
+targets:
+  Hum:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Hum
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.hum.app   # ← 改成你的 reverse-DNS
+        TARGETED_DEVICE_FAMILY: "1,2"                     # iPhone + iPad
+    info:
+      path: Hum/Info.plist
+      properties:
+        CFBundleDisplayName: Hum
+        # MusicAuthorization.request() 没有这条会在运行时崩溃（M-i2 用到）
+        NSAppleMusicUsageDescription: "Hum 需要访问 Apple Music 来试听、完整播放并把你勾选的歌曲建成歌单。"
+        # 运行时从 Bundle 读取后端基址（见 APIConfig.swift）
+        HUMApiBase: "$(HUM_API_BASE)"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: Hum/Hum.entitlements
+      properties:
+        com.apple.developer.musickit: true
