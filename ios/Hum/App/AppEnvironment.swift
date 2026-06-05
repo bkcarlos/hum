@@ -11,6 +11,7 @@ final class AppEnvironment: ObservableObject {
     let music: MusicAuthStore
     let preview: PreviewPlayer
     let reco: RecommendationCoordinator
+    let ui = UIState()
 
     init() {
         let api = APIClient()

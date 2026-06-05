@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var loadingModels = false
     @State private var modelsMsg = ""
     @State private var modelsOk: Bool?
+    @State private var showClearConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -76,16 +77,22 @@ struct SettingsView: View {
                     Text("你的 API Key 只保存在本机钥匙串，调用时随请求转发给后端用于本次 LLM 调用、用完即弃；不在服务器保存、不记录日志。请勿在公共设备上保存。")
                 }
 
-                Section {
-                    Button("清除本地配置", role: .destructive) { llm.wipe(); resetHints() }
-                }
             }
             .navigationTitle("LLM 设置 · BYOK")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("清除", role: .destructive) { showClearConfirm = true }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { llm.persist(); dismiss() }
                 }
+            }
+            .confirmationDialog("清除本地配置？", isPresented: $showClearConfirm, titleVisibility: .visible) {
+                Button("清除并恢复默认", role: .destructive) { llm.wipe(); resetHints() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("将删除本机保存的 Key 与自定义配置。")
             }
             .onDisappear { llm.persist() }
         }

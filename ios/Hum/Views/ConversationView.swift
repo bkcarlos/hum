@@ -1,9 +1,11 @@
 import SwiftUI
 
-/// 左侧对话：空状态（hero + 示例）/ 聊天流 / Intent 芯片 / 错误重试 / 输入区。
+/// 左侧对话（iPad 双栏用）：空状态（hero + 示例）/ 聊天流 / Intent 芯片 / 错误 / 输入区。
 struct ConversationView: View {
     @EnvironmentObject private var convo: ConversationStore
     @EnvironmentObject private var reco: RecommendationCoordinator
+    @EnvironmentObject private var llm: LLMConfigStore
+    @EnvironmentObject private var ui: UIState
 
     @State private var input = ""
     @State private var seeds = ""
@@ -27,7 +29,12 @@ struct ConversationView: View {
                     if !reco.lastError.isEmpty {
                         HStack {
                             Text(reco.lastError).font(.caption).foregroundStyle(.red)
-                            Button("重试") { Task { await reco.retry() } }.font(.caption)
+                            Spacer()
+                            if reco.errorAction == .openSettings {
+                                Button("去设置") { ui.showSettings = true }.font(.caption)
+                            } else {
+                                Button("重试") { Task { await reco.retry() } }.font(.caption)
+                            }
                         }
                     }
                     IntentChipsView()
@@ -66,16 +73,12 @@ struct ConversationView: View {
         VStack(spacing: 6) {
             TextField("可选：种子歌手/歌曲（用逗号分隔）", text: $seeds)
                 .textFieldStyle(.roundedBorder).font(.caption)
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("描述心情/场景，或追加微调（如“去掉有歌词的”）", text: $input, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...4)
-                Button { send() } label: {
-                    Image(systemName: "arrow.up.circle.fill").font(.title)
-                }
-                .disabled(input.trimmed.isEmpty || reco.loading)
-                .foregroundStyle(BrandTheme.primary)
-            }
+            ComposerField(
+                placeholder: "描述心情/场景，或追加微调（如“去掉有歌词的”）",
+                text: $input,
+                disabled: reco.loading,
+                onSend: send
+            )
         }
         .padding()
         .background(.bar)
@@ -92,8 +95,12 @@ struct ConversationView: View {
         Task { await reco.send(text, seeds: seedList) }
     }
 
-    /// M-i1：本地挑选示例（无 LLM key 也能用）。M-i4 接 /api/examples 个性化。
+    /// 空状态示例：先本地兜底立即有内容，有 key 时再用 LLM 千人千面覆盖。
     private func loadExamples() {
         examples = ExampleProvider.pick(4)
+        Task {
+            let llmEx = await llm.fetchExamples(count: 4)
+            if !llmEx.isEmpty { examples = llmEx }
+        }
     }
 }

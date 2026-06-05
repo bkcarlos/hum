@@ -113,6 +113,14 @@ final class LLMConfigStore: ObservableObject {
         }
     }
 
+    /// 千人千面：有 key 时让 LLM 现编几条空状态示例；无 key/失败返回空（调用方回退本地池）。
+    func fetchExamples(count: Int) async -> [String] {
+        guard configured else { return [] }
+        return (try? await api.examples(body, apiKey: apiKey,
+                                        context: ExampleProvider.nowContext(),
+                                        tastes: TasteStore.top(8), count: count)) ?? []
+    }
+
     /// 合并预设 + 拉取的模型（去重、排序），供下拉用。
     var modelOptions: [String] {
         var seen = Set<String>()
@@ -122,11 +130,13 @@ final class LLMConfigStore: ObservableObject {
         return out.sorted()
     }
 
-    /// 一键清除本地配置（含 Keychain 里的 key）。
+    /// 一键清除本地配置：删 Keychain 里的 key + 清 UserDefaults + 恢复默认预设。
     func wipe() {
+        KeychainStore.delete()
+        [K.presetId, K.provider, K.baseUrl, K.model].forEach { defaults.removeObject(forKey: $0) }
         apiKey = ""
         tested = false
         availableModels = []
-        KeychainStore.delete()
+        applyPreset("openai")   // 恢复默认 provider/baseUrl/model（applyPreset 内部已 persist）
     }
 }

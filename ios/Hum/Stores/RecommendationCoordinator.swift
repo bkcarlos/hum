@@ -8,6 +8,10 @@ final class RecommendationCoordinator: ObservableObject {
     @Published private(set) var loading: Bool = false
     @Published private(set) var stage: String = ""      // "AI 选歌…" / "智能排序…" / "重新挑选…"
     @Published var lastError: String = ""
+    @Published var errorAction: ErrorAction = .retry    // 决定错误提示后跟「重试」还是「去设置」
+
+    /// 错误后建议的操作：可重试（网络/上游）还是去设置（配置类）。
+    enum ErrorAction { case retry, openSettings }
 
     private let api: APIClient
     private let llm: LLMConfigStore
@@ -87,7 +91,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("为你挑了 \(playlist.items.count) 首：「\(playlist.playlistName)」。试听、勾选后可一键建歌单。")
             end()
-        } catch let e as APIError { fail(e.userMessage) }
+        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -101,7 +105,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("已按「\(instruction)」重新挑选。")
             end()
-        } catch let e as APIError { fail(e.userMessage) }
+        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -121,7 +125,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("已按编辑后的条件重新挑选。")
             end()
-        } catch let e as APIError { fail(e.userMessage) }
+        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -129,13 +133,19 @@ final class RecommendationCoordinator: ObservableObject {
 
     /// M-i1 只要求 LLM 配好（storefront 用默认 "us"）；M-i2 起再加 Apple 授权前置。
     private func precondition() -> Bool {
-        guard llm.configured else { lastError = "请先在设置里配置并测试 LLM。"; return false }
+        guard llm.configured else {
+            lastError = "请先在「设置」里配置并测试 LLM。"
+            errorAction = .openSettings
+            return false
+        }
         return true
     }
 
     private func begin(_ s: String) { loading = true; stage = s; lastError = "" }
     private func end() { loading = false; stage = "" }
-    private func fail(_ msg: String) { loading = false; stage = ""; lastError = msg }
+    private func fail(_ msg: String, action: ErrorAction = .retry) {
+        loading = false; stage = ""; lastError = msg; errorAction = action
+    }
 
     /// 把编辑后的 intent 转回自然语言（对应前端 intentToText）。
     private func intentToText(_ i: Intent) -> String {

@@ -14,6 +14,7 @@ struct HumApp: App {
                 .environmentObject(env.music)
                 .environmentObject(env.preview)
                 .environmentObject(env.reco)
+                .environmentObject(env.ui)
         }
     }
 }

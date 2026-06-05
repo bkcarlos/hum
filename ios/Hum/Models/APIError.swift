@@ -24,4 +24,9 @@ struct APIError: Error, Codable, Equatable {
         default: return "出错了（\(code)）。"
         }
     }
+
+    /// 配置类错误（key 缺失/无效、模型不存在、请求被拒）——应引导去「设置」而非重试。
+    var needsSetup: Bool {
+        ["no_key", "auth", "bad_request", "model_not_found"].contains(code)
+    }
 }
