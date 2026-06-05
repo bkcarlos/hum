@@ -73,6 +73,7 @@ func main() {
 	}))
 
 	api := r.Group("/api")
+	api.Use(middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst).Middleware())
 	{
 		api.GET("/health", func(c *gin.Context) { httpx.OK(c, gin.H{"status": "ok"}) })
 

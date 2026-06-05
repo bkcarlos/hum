@@ -37,6 +37,11 @@ type Config struct {
 
 	// Catalog search result cache lifetime (0 disables caching).
 	SearchCacheTTL time.Duration
+
+	// Per-IP rate limit (token bucket): RateLimitRPS tokens/sec refill, capacity
+	// RateLimitBurst. RateLimitRPS<=0 disables limiting entirely.
+	RateLimitRPS   int
+	RateLimitBurst int
 }
 
 // Load reads .env (if present) into the process environment, then builds a
@@ -58,6 +63,8 @@ func Load() (*Config, error) {
 		UpstreamHTTPTimeout: time.Duration(envInt("UPSTREAM_TIMEOUT_SECONDS", 30)) * time.Second,
 		WebDir:              os.Getenv("WEB_DIR"),
 		SearchCacheTTL:      time.Duration(envInt("SEARCH_CACHE_TTL_SECONDS", 600)) * time.Second,
+		RateLimitRPS:        envInt("RATE_LIMIT_RPS", 10),
+		RateLimitBurst:      envInt("RATE_LIMIT_BURST", 30),
 	}
 	return cfg, nil
 }
