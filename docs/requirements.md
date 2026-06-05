@@ -16,6 +16,7 @@
 | v0.3 | 2026-06-01 | — | 锁定 v1 形态为纯网页版（MusicKit JS + HTTP API），显式排除原生/桌面端 |
 | v0.4 | 2026-06-01 | — | BYOK 首批全 Provider 支持（OpenAI 兼容 + Anthropic + Gemini）；storefront 跟随用户；Music User Token 不做持久化 |
 | v0.5 | 2026-06-01 | — | 确定 UI 形态为左右双栏（左对话/右歌单操作）；F10 对话微调提级为主交互；不提供演示 key |
+| v0.6 | 2026-06-05 | — | 新增**原生 iOS 端**（SwiftUI + 原生 MusicKit，复用后端 LLM 链路），形态由「纯网页」改为「Web 优先 + 原生 iOS」，推翻 v0.3「排除原生」；后端新增 per-IP 限流；补 Web 完整播放（订阅）与 F10 掉出歌「保留」入口 |
 
 ---
 
@@ -25,8 +26,8 @@
 现有音乐平台的"猜你喜欢"是基于协同过滤的黑盒推荐，用户无法用自己的语言精确表达"我现在想听什么"（如"适合雨天加班的慵懒爵士，别太吵"）。大语言模型擅长理解这类自然语言描述，但**不能让 LLM 直接生成歌曲列表**——它会编造不存在的歌、张冠李戴。本项目的核心思路是让 LLM 负责"理解用户 + 排序筛选"，真实歌曲数据全部来自 Apple Music 官方 API。
 
 ### 1.2 产品定位
-- **形态（v1 锁定）**：**纯网页版** Web 应用，桌面 + 移动端浏览器访问；前端用 MusicKit JS，对接 Apple Music HTTP API
-- **v1 明确不做的形态**：不做 iOS/macOS 原生 app（Swift MusicKit）、不做 Wails/Electron 桌面端——既为收敛范围到 Vue 3 + Go，也为规避原生/桌面端的写接口限制（见 §6 风险）
+- **形态（v1）**：**Web 优先 + 原生 iOS**。① Web 应用（桌面 + 移动端浏览器，前端 MusicKit JS，对接 Apple Music HTTP API）；② 原生 iOS App（SwiftUI + 原生 MusicKit，复用同一套 Go 后端的 LLM 链路 `/intent`·`/suggest`·`/rank`·`/examples`；Apple 部分用设备 MusicKit，而非后端签发的 Developer Token），代码在 `ios/`（XcodeGen 工程）
+- **历史变更**：v0.3 曾「显式排除原生/桌面端」，**v0.6 起推翻该决策、新增原生 iOS**（macOS / Wails / Electron 桌面端仍不做）。黄金原则不变：歌曲是否存在仍由 Apple 校验（iOS 经设备 MusicKit），LLM 不自行断定
 - **用途**：个人自用，可免费分享给他人使用
 - **明确不做**：不商业化、不收费、不接广告、不做内购（受 Apple MusicKit ToS 4.5.2 约束）
 - **LLM 成本**：用户自带 LLM API key（BYOK），调用费用由用户自行承担，本应用不代付、不保存其 key
@@ -357,6 +358,6 @@ MVP = M0 ~ M4。
 - BYOK 首批：全 Provider 自选，三类适配器
 - storefront：跟随用户，不写死
 - Music User Token：不持久化，每次会话重新授权
-- v1 形态：纯网页版，排除原生/桌面端
+- v1 形态：Web 优先 + 原生 iOS（v0.6 起；macOS/桌面端仍不做）
 - LLM key 传输：依赖 HTTPS，不自行加密；不落库不记日志（方案 B）
 - 不提供"演示/默认 key"
