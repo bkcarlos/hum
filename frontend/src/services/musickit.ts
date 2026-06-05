@@ -58,3 +58,34 @@ export async function unauthorize(): Promise<void> {
   const mk = await ensureMusicKit()
   await mk.unauthorize()
 }
+
+// ── Full-track playback (subscribers, F6) ─────────────────────────────────
+// MusicKit handles the subscription gate itself: a non-subscriber's play()
+// rejects, which callers catch and fall back to the 30s preview.
+
+const MK_PLAYING = 2 // MusicKit.PlaybackStates.playing
+
+/** Queue the given catalog song ids and start full-track playback. */
+export async function playFullTracks(songIds: string[]): Promise<void> {
+  const mk = await ensureMusicKit()
+  await mk.setQueue({ songs: songIds, startPlaying: false })
+  await mk.play()
+}
+
+export async function pauseFull(): Promise<void> {
+  const mk = await ensureMusicKit()
+  mk.pause()
+}
+
+export async function resumeFull(): Promise<void> {
+  const mk = await ensureMusicKit()
+  await mk.play()
+}
+
+/** Subscribe to playback-state changes; calls cb(isPlaying). Returns unsubscribe. */
+export async function onFullPlaybackChange(cb: (playing: boolean) => void): Promise<() => void> {
+  const mk = await ensureMusicKit()
+  const handler = () => cb(mk.playbackState === MK_PLAYING)
+  mk.addEventListener('playbackStateDidChange', handler)
+  return () => mk.removeEventListener('playbackStateDidChange', handler)
+}

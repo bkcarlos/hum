@@ -5,15 +5,24 @@ import SongRow from './SongRow.vue'
 import { usePlaylistStore } from '@/stores/playlist'
 import { useAppleStore } from '@/stores/apple'
 import { usePreviewPlayer } from '@/composables/usePreviewPlayer'
+import { useFullPlayer } from '@/composables/useFullPlayer'
 import { createPlaylist } from '@/api/client'
 import type { ApiError } from '@/types'
 
 const playlist = usePlaylistStore()
 const apple = useAppleStore()
 const { currentId, playing, setQueue, toggle, next, prev } = usePreviewPlayer()
+const { playingFull, setFullQueue, playPauseFull } = useFullPlayer()
 
 const songsInOrder = computed(() => playlist.items.map((it) => it.song))
-watch(songsInOrder, (s) => setQueue(s), { immediate: true })
+watch(
+  songsInOrder,
+  (s) => {
+    setQueue(s)
+    setFullQueue(s.map((x) => x.id))
+  },
+  { immediate: true },
+)
 
 const allSelected = computed(
   () => playlist.items.length > 0 && playlist.selectedCount === playlist.items.length,
@@ -68,8 +77,15 @@ async function onCreate() {
       <strong>歌单 · 精确操作</strong>
       <n-space v-if="playlist.hasResult" size="small" align="center">
         <n-button circle size="tiny" title="上一首" @click="prev">⏮</n-button>
-        <n-button circle size="small" title="播放/暂停" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
+        <n-button circle size="small" title="预览播放/暂停（30s）" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
         <n-button circle size="tiny" title="下一首" @click="next">⏭</n-button>
+        <n-button
+          v-if="apple.authorized"
+          circle
+          size="small"
+          title="完整播放/暂停（需 Apple Music 订阅）"
+          @click="playPauseFull"
+        >{{ playingFull ? '⏸' : '♪' }}</n-button>
       </n-space>
     </header>
 

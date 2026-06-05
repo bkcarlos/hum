@@ -21,6 +21,17 @@ declare global {
     unauthorize(): Promise<void>
     readonly storefrontId: string
     readonly isAuthorized: boolean
+
+    // Full (non-preview) playback for subscribers (F6). Loosely typed — the v3
+    // SDK ships no first-party types; we only declare what we call.
+    setQueue(opts: { songs?: string[]; song?: string; startPlaying?: boolean }): Promise<unknown>
+    play(): Promise<unknown>
+    pause(): void
+    stop(): void
+    readonly playbackState: number // MusicKit.PlaybackStates (2 = playing, 3 = paused)
+    readonly nowPlayingItem: { id: string } | null
+    addEventListener(name: string, handler: (event: unknown) => void): void
+    removeEventListener(name: string, handler: (event: unknown) => void): void
   }
 
   interface Window {
