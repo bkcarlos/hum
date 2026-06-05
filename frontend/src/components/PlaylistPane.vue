@@ -98,6 +98,9 @@ async function onCreate() {
       @close="playlist.dismissNotice()"
     >
       {{ playlist.notice }}
+      <n-button text type="primary" size="tiny" style="margin-left: 8px" @click="playlist.keepDropped()">
+        保留这些歌
+      </n-button>
     </n-alert>
 
     <template v-if="playlist.hasResult">

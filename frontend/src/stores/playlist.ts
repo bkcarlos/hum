@@ -12,8 +12,8 @@ export interface PlaylistItem {
 }
 
 // Right column state (F6/F7) + the F10 state-sync rule:
-//   a new round OVERRIDES the list, but KEEPS selections that still appear and
-//   NOTICES the user about any selected song that dropped out.
+//   a new round OVERRIDES the list, KEEPS selections that still appear, and
+//   stashes any selected song that dropped out so the user can keep it in one tap.
 export const usePlaylistStore = defineStore('playlist', () => {
   const pool = ref<Map<string, Song>>(new Map()) // id -> Song for the current candidate pool
   const items = ref<PlaylistItem[]>([]) // ordered display list
@@ -21,6 +21,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
   const playlistName = ref('')
   const description = ref('')
   const notice = ref('') // F10 dropped-selection notice
+  const droppedItems = ref<PlaylistItem[]>([]) // F10: selected songs dropped this round, awaiting keep/discard
 
   const hasResult = computed(() => items.value.length > 0)
 
@@ -40,15 +41,15 @@ export const usePlaylistStore = defineStore('playlist', () => {
   }
 
   /** F10 refinement. Pass new songs to replace the pool (re-search), or omit to
-   *  re-rank the existing pool. Either way the list is overridden but surviving
-   *  selections are kept. */
+   *  re-rank the existing pool. The list is overridden but surviving selections
+   *  are kept; dropped selections are stashed for one-tap keep. */
   function applyRefinement(rank: RankResult, songs?: Song[]) {
     if (songs && songs.length) pool.value = new Map(songs.map((s) => [s.id, s]))
     applyRank(rank, true)
   }
 
   function applyRank(rank: RankResult, isRefinement: boolean) {
-    const prevIds = new Set(items.value.map((it) => it.song.id))
+    const prevById = new Map(items.value.map((it) => [it.song.id, it]))
     const next: PlaylistItem[] = []
     for (const r of rank.songs) {
       const song = pool.value.get(r.id)
@@ -56,20 +57,38 @@ export const usePlaylistStore = defineStore('playlist', () => {
       next.push({
         song,
         reason: r.reason,
-        status: isRefinement && prevIds.has(r.id) ? 'kept' : 'new',
+        status: isRefinement && prevById.has(r.id) ? 'kept' : 'new',
       })
     }
     items.value = next
     playlistName.value = rank.playlist_name
     description.value = rank.description
 
-    // Keep selections that survive; notice the user about dropped ones.
+    // Keep selections that survive; stash the dropped (still-wanted) ones.
     const presentIds = new Set(next.map((it) => it.song.id))
-    const dropped = [...selected.value].filter((id) => !presentIds.has(id))
+    const droppedIds = [...selected.value].filter((id) => !presentIds.has(id))
     selected.value = new Set([...selected.value].filter((id) => presentIds.has(id)))
-    notice.value = dropped.length
-      ? `有 ${dropped.length} 首已勾选的歌曲不在本轮推荐中，已暂时移出（可重新描述找回）。`
+    droppedItems.value = droppedIds
+      .map((id) => prevById.get(id))
+      .filter((it): it is PlaylistItem => !!it)
+    notice.value = droppedItems.value.length
+      ? `有 ${droppedItems.value.length} 首已勾选的歌曲不在本轮推荐中。`
       : ''
+  }
+
+  /** Keep the dropped selections: append them back (as kept) and re-select. */
+  function keepDropped() {
+    if (!droppedItems.value.length) return
+    for (const it of droppedItems.value) pool.value.set(it.song.id, it.song)
+    items.value = [
+      ...items.value,
+      ...droppedItems.value.map((it) => ({ ...it, status: 'kept' as ItemStatus })),
+    ]
+    const sel = new Set(selected.value)
+    droppedItems.value.forEach((it) => sel.add(it.song.id))
+    selected.value = sel
+    droppedItems.value = []
+    notice.value = ''
   }
 
   function toggle(id: string) {
@@ -84,8 +103,10 @@ export const usePlaylistStore = defineStore('playlist', () => {
   function clearSelection() {
     selected.value = new Set()
   }
+  /** Dismiss the notice = discard the dropped songs. */
   function dismissNotice() {
     notice.value = ''
+    droppedItems.value = []
   }
   function reset() {
     pool.value = new Map()
@@ -94,6 +115,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
     playlistName.value = ''
     description.value = ''
     notice.value = ''
+    droppedItems.value = []
   }
 
   return {
@@ -102,12 +124,14 @@ export const usePlaylistStore = defineStore('playlist', () => {
     playlistName,
     description,
     notice,
+    droppedItems,
     hasResult,
     candidatesForRank,
     selectedSongs,
     selectedCount,
     setRecommendation,
     applyRefinement,
+    keepDropped,
     toggle,
     selectAll,
     clearSelection,
