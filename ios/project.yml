@@ -39,7 +39,7 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-    entitlements:
-      path: Hum/Hum.entitlements
-      properties:
-        com.apple.developer.musickit: true
+    # 原生 MusicKit（ApplicationMusicPlayer / MusicLibrary / 授权）不需要 entitlement —
+    # 只靠 Info.plist 的 NSAppleMusicUsageDescription + 运行时 MusicAuthorization + 用户订阅。
+    # com.apple.developer.musickit 是 MusicKit JS / Apple Music API 的 token capability，
+    # 对原生 App 是无效 entitlement（会导致 "not found ... could not be included" 签名报错），故不配。
