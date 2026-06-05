@@ -12,6 +12,7 @@ struct CompactHomeView: View {
     @EnvironmentObject private var ui: UIState
 
     @State private var input = ""
+    @State private var seeds = ""
     @State private var examples: [String] = []
     @State private var showConversation = false
 
@@ -150,12 +151,7 @@ struct CompactHomeView: View {
                     HStack(spacing: 16) {
                         TransportControls()
                         if music.canPlayFull {
-                            Button {
-                                Task { await music.playFull(catalogIDs: playlist.orderedSongs.map { $0.id }) }
-                            } label: {
-                                Image(systemName: "play.fill")
-                            }
-                            .buttonStyle(.plain).foregroundStyle(BrandTheme.primary)
+                            FullPlaybackButton(catalogIDs: playlist.orderedSongs.map { $0.id })
                         }
                     }
 
@@ -164,6 +160,10 @@ struct CompactHomeView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 CreatePlaylistButton()
+            }
+            if !playlist.hasResult {
+                TextField("可选：种子歌手/歌曲（逗号分隔）", text: $seeds)
+                    .textFieldStyle(.roundedBorder).font(.caption)
             }
             ComposerField(
                 placeholder: playlist.hasResult ? "继续微调（如“去掉有歌词的”）" : "描述心情/场景…",
@@ -179,8 +179,12 @@ struct CompactHomeView: View {
     private func send() {
         let text = input.trimmed
         guard !text.isEmpty else { return }
+        let seedList = seeds
+            .split(whereSeparator: { $0 == "," || $0 == "，" })
+            .map { String($0).trimmed }
+            .filter { !$0.isEmpty }
         input = ""
-        Task { await reco.send(text, seeds: []) }
+        Task { await reco.send(text, seeds: seedList) }
     }
 
     /// 空状态示例：先本地兜底立即有内容，有 key 时再用 LLM 千人千面覆盖。

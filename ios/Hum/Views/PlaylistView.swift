@@ -34,12 +34,7 @@ struct PlaylistView: View {
             HStack(spacing: 12) {
                 TransportControls()
                 if music.canPlayFull {
-                    Button {
-                        Task { await music.playFull(catalogIDs: playlist.orderedSongs.map { $0.id }) }
-                    } label: {
-                        Label("完整播放", systemImage: "play.fill").font(.caption)
-                    }
-                    .buttonStyle(.plain).foregroundStyle(BrandTheme.primary)
+                    FullPlaybackButton(catalogIDs: playlist.orderedSongs.map { $0.id })
                 }
                 Spacer()
                 Button(playlist.allSelected ? "取消全选" : "全选") {
