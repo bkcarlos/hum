@@ -77,7 +77,7 @@ final class RecommendationCoordinator: ObservableObject {
         begin("AI 选歌…")
         do {
             let s = try await api.suggest(llm.body, apiKey: llm.apiKey,
-                                          storefront: music.storefront, text: text, seedArtists: seeds)
+                                          storefront: music.storefront, text: withAvoidHint(text), seedArtists: seeds)
             guard !s.candidates.isEmpty else {
                 fail("AI 推荐的歌在 Apple Music 上都没匹配到，换个说法或更具体些。"); return
             }
@@ -114,7 +114,7 @@ final class RecommendationCoordinator: ObservableObject {
         begin("AI 选歌…")
         do {
             let s = try await api.suggest(llm.body, apiKey: llm.apiKey, storefront: music.storefront,
-                                          text: intentToText(convo.intent), seedArtists: convo.intent.seedArtists)
+                                          text: withAvoidHint(intentToText(convo.intent)), seedArtists: convo.intent.seedArtists)
             guard !s.candidates.isEmpty else {
                 fail("按当前条件没匹配到歌曲，调整一下条件再试。"); return
             }
@@ -145,6 +145,14 @@ final class RecommendationCoordinator: ObservableObject {
     private func end() { loading = false; stage = "" }
     private func fail(_ msg: String, action: ErrorAction = .retry) {
         loading = false; stage = ""; lastError = msg; errorAction = action
+    }
+
+    /// 把本地"负向口味"（删除歌曲累积的风格/歌手）软性附到推荐请求上。
+    /// 只影响 LLM 提名，候选仍逐条走 Apple 解析校验，不破黄金原则；措辞让本次明确需求优先。
+    private func withAvoidHint(_ text: String) -> String {
+        let avoid = TasteStore.topDislikes(5)
+        guard !avoid.isEmpty else { return text }
+        return text + "（口味提示：尽量避免这些风格/歌手：\(avoid.joined(separator: "、"))；若与本次要求冲突，以本次为准。）"
     }
 
     /// 把编辑后的 intent 转回自然语言（对应前端 intentToText）。

@@ -73,6 +73,23 @@ struct CompactHomeView: View {
                         Button { playlist.dismissNotice() } label: { Image(systemName: "xmark") }.font(.caption)
                     }
                 }
+                if let removed = playlist.lastRemoved {
+                    HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("已删除「\(removed.item.song.title)」")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let sim = playlist.similarPrompt {
+                                Text("还有 \(sim.ids.count) 首「\(sim.label)」同类")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        if playlist.similarPrompt != nil {
+                            Button("一起删") { deleteSimilar() }.font(.caption).tint(.red)
+                        }
+                        Button("撤销") { undoDelete() }.font(.caption)
+                    }
+                }
                 ForEach(playlist.items) { item in
                     SongRowView(
                         item: item,
@@ -83,9 +100,22 @@ struct CompactHomeView: View {
                         onTogglePlay: { preview.toggle(item.song) }
                     )
                     .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button { playlist.toggle(item.id) } label: {
+                            Label(playlist.selected.contains(item.id) ? "取消" : "选择",
+                                  systemImage: playlist.selected.contains(item.id) ? "circle" : "checkmark.circle.fill")
+                        }
+                        .tint(.green)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) { delete(item) } label: {
+                            Label("删除", systemImage: "trash")
+                        }
+                    }
                 }
             }
             .listStyle(.plain)
+            .animation(.default, value: playlist.items)
         } else {
             emptyState
         }
@@ -185,6 +215,21 @@ struct CompactHomeView: View {
             .filter { !$0.isEmpty }
         input = ""
         Task { await reco.send(text, seeds: seedList) }
+    }
+
+    /// 左滑删除一行：移除并刷新预览队列；撤销条随 playlist.lastRemoved 出现。
+    private func delete(_ item: PlaylistItem) {
+        withAnimation { playlist.removeItem(item.id) }
+        preview.setQueue(playlist.orderedSongs)
+    }
+    private func undoDelete() {
+        withAnimation { playlist.undoRemove() }
+        preview.setQueue(playlist.orderedSongs)
+    }
+    /// 一起删除"同类"剩余歌曲（同风格/同歌手）。
+    private func deleteSimilar() {
+        withAnimation { playlist.removeSimilar() }
+        preview.setQueue(playlist.orderedSongs)
     }
 
     /// 空状态示例：先本地兜底立即有内容，有 key 时再用 LLM 千人千面覆盖。
