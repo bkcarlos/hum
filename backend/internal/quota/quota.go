@@ -22,6 +22,24 @@ type Config struct {
 	LLMProvider string `json:"llmProvider" firestore:"llmProvider"`
 	LLMBaseURL  string `json:"llmBaseUrl" firestore:"llmBaseUrl"`
 	LLMModel    string `json:"llmModel" firestore:"llmModel"`
+	// Admins is the allowlist of Apple `sub`s permitted to use the admin API/UI.
+	// It lives in this same live config doc so it can be edited in the console
+	// without a restart. Bootstrap the first admin by reading your sub from
+	// GET /api/auth/me and adding it here. Empty = no admins (admin routes 403).
+	Admins []string `json:"admins" firestore:"admins"`
+}
+
+// IsAdmin reports whether sub is in the admin allowlist (exact match).
+func (c Config) IsAdmin(sub string) bool {
+	if sub == "" {
+		return false
+	}
+	for _, a := range c.Admins {
+		if a == sub {
+			return true
+		}
+	}
+	return false
 }
 
 // Reason explains why a reserve was denied (empty when allowed).

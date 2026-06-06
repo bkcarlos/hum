@@ -12,7 +12,7 @@ import (
 
 // Firestore layout (all top-level collections):
 //
-//	humQuota/config            → Config (live policy; admin-editable)
+//	humQuota/config            → Config (live policy + admin sub allowlist; console-editable)
 //	humQuotaGlobal/{day}       → { count }   global daily counter
 //	humQuotaUser/{day}__{sub}  → { count }   per-user daily counter
 //	humQuotaBans/{sub}         → { banned }  ban flag (absent = not banned)

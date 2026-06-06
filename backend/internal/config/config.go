@@ -68,6 +68,12 @@ type Config struct {
 	// FirestoreProject enables the durable Firestore quota store; empty → in-memory
 	// (single-instance, dev only).
 	FirestoreProject string
+
+	// AdminAppleSubs seeds the admin allowlist (Apple subs, CSV) into the quota
+	// config on first boot. After that the live list lives in the store's config
+	// doc (console-editable, no restart). Empty → no admins until one is added in
+	// the console (get your sub from GET /api/auth/me to bootstrap).
+	AdminAppleSubs []string
 }
 
 // Load reads .env (if present) into the process environment, then builds a
@@ -102,6 +108,7 @@ func Load() (*Config, error) {
 		FreeTierPerUser:    envInt("FREE_TIER_PER_USER_DAILY", 20),
 		FreeTierGlobal:     envInt("FREE_TIER_GLOBAL_DAILY", 0),
 		FirestoreProject:   os.Getenv("FIRESTORE_PROJECT"),
+		AdminAppleSubs:     splitCSV(os.Getenv("ADMIN_APPLE_SUBS")),
 	}
 	return cfg, nil
 }

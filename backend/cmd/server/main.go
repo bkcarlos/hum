@@ -74,6 +74,7 @@ func main() {
 			LLMProvider:       cfg.DefaultLLMProvider,
 			LLMBaseURL:        cfg.DefaultLLMBaseURL,
 			LLMModel:          cfg.DefaultLLMModel,
+			Admins:            cfg.AdminAppleSubs,
 		}
 		var store quota.Store
 		if cfg.FirestoreProject != "" {
@@ -93,7 +94,7 @@ func main() {
 		}
 		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleBundleID, cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
 		freeTierOn = true
-		slog.Info("free tier enabled", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal)
+		slog.Info("free tier enabled", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal, "seededAdmins", len(cfg.AdminAppleSubs))
 	} else {
 		slog.Info("free tier disabled — suggest/rank are BYOK-only (set DEFAULT_LLM_API_KEY/SESSION_SECRET/APPLE_BUNDLE_ID/DEFAULT_LLM_MODEL to enable)")
 	}
@@ -132,6 +133,13 @@ func main() {
 		// Free tier: exchange a Sign in with Apple identity token for a session.
 		if freeTierOn {
 			api.POST("/auth/apple", h.AppleAuth)
+			api.GET("/auth/me", h.Me) // who am I (+ isAdmin) — bootstrap + UI nav
+
+			// Admin API (C3+) sits behind the Apple-sub allowlist in the live
+			// config. AdminOnly verifies the Bearer session's sub ∈ Admins.
+			admin := api.Group("/admin")
+			admin.Use(h.AdminOnly())
+			admin.GET("/me", h.AdminMe) // gate canary the admin UI hits on load
 		}
 	}
 
