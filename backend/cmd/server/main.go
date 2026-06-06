@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
@@ -74,12 +75,21 @@ func main() {
 			LLMBaseURL:        cfg.DefaultLLMBaseURL,
 			LLMModel:          cfg.DefaultLLMModel,
 		}
-		// TODO(P1-slice2): use the Firestore store when cfg.FirestoreProject != "".
-		store := quota.NewMemoryStore(seed)
+		var store quota.Store
 		if cfg.FirestoreProject != "" {
-			slog.Warn("free tier: FIRESTORE_PROJECT set but Firestore store not wired yet — using in-memory (single-instance)")
+			initCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			fs, ferr := quota.NewFirestoreStore(initCtx, cfg.FirestoreProject, seed)
+			cancel()
+			if ferr != nil {
+				slog.Error("free tier: Firestore init failed, falling back to in-memory", "err", ferr)
+				store = quota.NewMemoryStore(seed)
+			} else {
+				store = fs
+				slog.Info("free tier: using Firestore quota store", "project", cfg.FirestoreProject)
+			}
 		} else {
-			slog.Warn("free tier: using in-memory quota (single-instance; not shared across Cloud Run instances)")
+			store = quota.NewMemoryStore(seed)
+			slog.Warn("free tier: using in-memory quota (single-instance; set FIRESTORE_PROJECT for prod)")
 		}
 		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleBundleID, cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
 		freeTierOn = true
