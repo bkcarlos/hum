@@ -49,7 +49,10 @@ export function useRecommendation() {
     } else if (!llm.configured) {
       return '请先在右上角「接入设置」配置并测试你的 API Key（F0），或改用免费额度。'
     }
-    if (!apple.authorized || !apple.storefront) return '请先点击「连接 Apple Music」完成授权（F1）。'
+    // Recommendations + 30s previews don't need Apple Music connected — the
+    // storefront is inferred (catalog search uses the server Developer Token).
+    // Connecting is only required to play full tracks or build a playlist.
+    if (!apple.storefront) return '暂时无法确定地区，可点「连接 Apple Music」。'
     return null
   }
 
@@ -85,7 +88,7 @@ export function useRecommendation() {
 
       stage.value = '智能排序…'
       const rank = await api.rankSongs(llm.body, auth, intent, toCandidates(candidates))
-      playlist.setRecommendation(candidates, rank)
+      playlist.setRecommendation(candidates, rank, apple.storefront)
 
       const miss = unresolved.length ? `（AI 建议 ${suggested} 首，在 Apple Music 命中 ${resolved} 首）` : ''
       convo.addAssistant(
@@ -153,7 +156,7 @@ export function useRecommendation() {
 
       stage.value = '智能排序…'
       const rank = await api.rankSongs(llm.body, auth, convo.intent, toCandidates(candidates))
-      playlist.applyRefinement(rank, candidates) // replace pool, keep selected
+      playlist.applyRefinement(rank, candidates, apple.storefront) // replace pool, keep selected
 
       const tail = playlist.notice ? ` ${playlist.notice}` : ''
       convo.addAssistant(`已按调整后的条件重新挑选：「${rank.playlist_name}」，共 ${rank.songs.length} 首。${tail}`)

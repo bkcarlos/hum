@@ -50,15 +50,28 @@ const creating = ref(false)
 const created = ref<{ name: string; url: string } | null>(null)
 const createErr = ref('')
 
+// Full playback needs Apple Music — connect on demand, then play.
+async function onFullPlay() {
+  if (!apple.authorized && !(await apple.connect())) return
+  await playPauseFull()
+}
+
 async function onCreate() {
   created.value = null
   createErr.value = ''
-  if (!apple.authorized) {
-    createErr.value = '请先连接并授权 Apple Music。'
-    return
-  }
   if (playlist.selectedCount === 0) {
     createErr.value = '请至少勾选一首歌。'
+    return
+  }
+  // Building a library playlist needs Apple Music — connect on demand.
+  if (!apple.authorized && !(await apple.connect())) {
+    createErr.value = apple.error || '需要连接 Apple Music 才能把歌单存进你的资料库。'
+    return
+  }
+  // Apple catalog ids are storefront-specific: if the pool was resolved against a
+  // different region than the connected account, the ids won't match → re-search.
+  if (playlist.builtStorefront && playlist.builtStorefront !== apple.storefront) {
+    createErr.value = `当前结果基于 ${playlist.builtStorefront.toUpperCase()} 区，你的 Apple Music 是 ${apple.storefront.toUpperCase()} 区。请在左侧「用编辑后的条件重搜」后再建歌单，以匹配你的曲库。`
     return
   }
   creating.value = true
@@ -88,11 +101,10 @@ async function onCreate() {
         <n-button circle size="small" title="预览播放/暂停（30s）" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
         <n-button circle size="tiny" title="下一首" @click="next">⏭</n-button>
         <n-button
-          v-if="apple.authorized"
           circle
           size="small"
-          title="完整播放/暂停（需 Apple Music 订阅）"
-          @click="playPauseFull"
+          :title="apple.authorized ? '完整播放/暂停' : '完整播放（需连接 Apple Music · 订阅）'"
+          @click="onFullPlay"
         >{{ playingFull ? '⏸' : '♪' }}</n-button>
       </n-space>
     </header>
@@ -125,11 +137,10 @@ async function onCreate() {
           <n-button circle type="primary" title="预览播放/暂停（30s）" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
           <n-button circle size="small" title="下一首" @click="next">⏭</n-button>
           <n-button
-            v-if="apple.authorized"
             circle
             size="small"
-            title="完整播放/暂停（需 Apple Music 订阅）"
-            @click="playPauseFull"
+            :title="apple.authorized ? '完整播放/暂停' : '完整播放（需连接 Apple Music · 订阅）'"
+            @click="onFullPlay"
           >{{ playingFull ? '⏸' : '♪' }}</n-button>
         </div>
       </div>

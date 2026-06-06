@@ -16,6 +16,9 @@ export interface PlaylistItem {
 //   stashes any selected song that dropped out so the user can keep it in one tap.
 export const usePlaylistStore = defineStore('playlist', () => {
   const pool = ref<Map<string, Song>>(new Map()) // id -> Song for the current candidate pool
+  // The storefront the current pool was resolved against. Apple catalog ids are
+  // storefront-specific, so playlist creation must use a matching account region.
+  const builtStorefront = ref('')
   const items = ref<PlaylistItem[]>([]) // ordered display list
   const selected = ref<Set<string>>(new Set())
   const playlistName = ref('')
@@ -37,17 +40,22 @@ export const usePlaylistStore = defineStore('playlist', () => {
   )
   const selectedCount = computed(() => selected.value.size)
 
-  /** First recommendation for a fresh pool — overwrites everything. */
-  function setRecommendation(songs: Song[], rank: RankResult) {
+  /** First recommendation for a fresh pool — overwrites everything. `storefront`
+   *  records the region the pool was resolved against. */
+  function setRecommendation(songs: Song[], rank: RankResult, storefront = '') {
     pool.value = new Map(songs.map((s) => [s.id, s]))
+    builtStorefront.value = storefront
     applyRank(rank, false)
   }
 
   /** F10 refinement. Pass new songs to replace the pool (re-search), or omit to
    *  re-rank the existing pool. The list is overridden but surviving selections
    *  are kept; dropped selections are stashed for one-tap keep. */
-  function applyRefinement(rank: RankResult, songs?: Song[]) {
-    if (songs && songs.length) pool.value = new Map(songs.map((s) => [s.id, s]))
+  function applyRefinement(rank: RankResult, songs?: Song[], storefront?: string) {
+    if (songs && songs.length) {
+      pool.value = new Map(songs.map((s) => [s.id, s]))
+      if (storefront) builtStorefront.value = storefront // re-search replaced the pool
+    }
     applyRank(rank, true)
   }
 
@@ -151,6 +159,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
   }
   function reset() {
     pool.value = new Map()
+    builtStorefront.value = ''
     items.value = []
     selected.value = new Set()
     playlistName.value = ''
@@ -169,6 +178,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
     droppedItems,
     lastRemoved,
     hasResult,
+    builtStorefront,
     candidatesForRank,
     selectedSongs,
     selectedCount,
