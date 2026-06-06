@@ -112,6 +112,36 @@ export interface ApiError {
   message: string
 }
 
+// ── Free-tier admin (C2/C3/C4) ──────────────────────────────────────────
+
+/** Live free-tier policy + admin allowlist (backend quota.Config). The server's
+ *  own LLM key is NOT part of this — it's a server secret, never sent to clients. */
+export interface QuotaConfig {
+  enabled: boolean
+  perUserDailyLimit: number
+  globalDailyLimit: number
+  llmProvider: ProviderType
+  llmBaseUrl: string
+  llmModel: string
+  admins: string[]
+}
+
+/** One user's metered usage for a day + ban state (admin usage view). */
+export interface UserUsage {
+  sub: string
+  used: number
+  banned: boolean
+}
+
+/** GET /admin/usage response: the day's totals + per-user breakdown. */
+export interface AdminUsage {
+  day: string
+  globalUsed: number
+  globalLimit: number
+  perUserLimit: number
+  users: UserUsage[]
+}
+
 export type ChatRole = 'user' | 'assistant'
 
 export interface ChatMessage {

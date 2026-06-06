@@ -1,5 +1,16 @@
 import axios, { AxiosError } from 'axios'
-import type { ApiError, Candidate, Intent, LlmBody, ModelInfo, RankResult, Song, SuggestResult } from '@/types'
+import type {
+  AdminUsage,
+  ApiError,
+  Candidate,
+  Intent,
+  LlmBody,
+  ModelInfo,
+  QuotaConfig,
+  RankResult,
+  Song,
+  SuggestResult,
+} from '@/types'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? '/api',
@@ -90,4 +101,34 @@ export function createPlaylist(
   songIds: string[],
 ): Promise<{ id: string; name: string; url: string }> {
   return http.post('/apple/playlists', { name, description, songIds }, { headers: { 'Music-User-Token': userToken } })
+}
+
+// ── Free-tier admin (Sign in with Apple session; C2/C3/C4) ────────────
+/** The admin session Bearer (issued by /auth/apple). Like the BYOK key it is a
+ *  credential — it lives only in the admin store's localStorage, never elsewhere. */
+function bearer(session: string) {
+  return { headers: { Authorization: `Bearer ${session}` } }
+}
+
+/** Who am I: the caller's Apple sub + whether they're an admin. Any valid session. */
+export function adminMe(session: string): Promise<{ sub: string; isAdmin: boolean }> {
+  return http.get('/admin/me', bearer(session))
+}
+
+export function getAdminConfig(session: string): Promise<QuotaConfig> {
+  return http.get('/admin/config', bearer(session))
+}
+
+/** Partial update: only the provided fields change (omitted ones — notably
+ *  `admins` — are preserved server-side). */
+export function updateAdminConfig(session: string, patch: Partial<QuotaConfig>): Promise<QuotaConfig> {
+  return http.post('/admin/config', patch, bearer(session))
+}
+
+export function getAdminUsage(session: string, day?: string): Promise<AdminUsage> {
+  return http.get('/admin/usage', { ...bearer(session), params: day ? { day } : undefined })
+}
+
+export function setUserBan(session: string, sub: string, banned: boolean): Promise<{ sub: string; banned: boolean }> {
+  return http.post(`/admin/users/${encodeURIComponent(sub)}/${banned ? 'ban' : 'unban'}`, null, bearer(session))
 }
