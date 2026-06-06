@@ -2,17 +2,14 @@
 import { onMounted, ref } from 'vue'
 import {
   NButton,
-  NCard,
   NDynamicTags,
   NForm,
   NFormItem,
   NInput,
   NInputNumber,
   NSelect,
-  NSpace,
   NSpin,
   NSwitch,
-  NText,
   useMessage,
 } from 'naive-ui'
 import { getAdminConfig, updateAdminConfig } from '@/api/client'
@@ -61,44 +58,111 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="配额配置">
-    <template #header-extra>
-      <n-text depth="3" style="font-size: 12px">改动即时生效，无需重启</n-text>
-    </template>
-
-    <div v-if="loading" style="padding: 24px; text-align: center"><n-spin /></div>
-    <n-form v-else-if="cfg" label-placement="left" :label-width="120" :show-feedback="false">
-      <n-form-item label="免费档开关">
-        <n-switch v-model:value="cfg.enabled" />
-      </n-form-item>
-      <n-form-item label="每人每日额度">
-        <n-input-number v-model:value="cfg.perUserDailyLimit" :min="0" style="width: 160px" />
-        <n-text depth="3" style="font-size: 12px; margin-left: 10px">0 = 不限；一次推荐 ≈ 2</n-text>
-      </n-form-item>
-      <n-form-item label="全局每日额度">
-        <n-input-number v-model:value="cfg.globalDailyLimit" :min="0" style="width: 160px" />
-        <n-text depth="3" style="font-size: 12px; margin-left: 10px">0 = 不限（护账单用）</n-text>
-      </n-form-item>
-      <n-form-item label="默认 Provider">
-        <n-select v-model:value="cfg.llmProvider" :options="providerOptions" style="width: 280px" />
-      </n-form-item>
-      <n-form-item label="默认 Base URL">
-        <n-input v-model:value="cfg.llmBaseUrl" placeholder="https://…" />
-      </n-form-item>
-      <n-form-item label="默认 Model">
-        <n-input v-model:value="cfg.llmModel" placeholder="模型名" />
-      </n-form-item>
-      <n-form-item label="管理员 (Apple sub)">
-        <n-space vertical :size="4" style="width: 100%">
-          <n-dynamic-tags v-model:value="cfg.admins" />
-          <n-text depth="3" style="font-size: 12px">移除自己会即时失去后台访问；可在 GCP 控制台重新加回。</n-text>
-        </n-space>
-      </n-form-item>
-
-      <n-space justify="end" style="margin-top: 8px">
+  <section class="sec">
+    <header class="sec-head">
+      <div>
+        <h1>配额配置</h1>
+        <p class="desc">改动即时生效，无需重启</p>
+      </div>
+      <div class="actions" v-if="cfg">
         <n-button :disabled="saving" @click="load">重置</n-button>
         <n-button type="primary" :loading="saving" @click="save">保存</n-button>
-      </n-space>
-    </n-form>
-  </n-card>
+      </div>
+    </header>
+
+    <div v-if="loading" class="center"><n-spin /></div>
+    <template v-else-if="cfg">
+      <div class="card">
+        <div class="group-label">免费档额度</div>
+        <n-form label-placement="left" :label-width="120" :show-feedback="false">
+          <n-form-item label="免费档开关">
+            <n-switch v-model:value="cfg.enabled" />
+            <span class="inline-hint">关闭后所有免费档请求一律 429（BYOK 不受影响）</span>
+          </n-form-item>
+          <n-form-item label="每人每日额度">
+            <n-input-number v-model:value="cfg.perUserDailyLimit" :min="0" style="width: 150px" />
+            <span class="inline-hint">0 = 不限；一次推荐 ≈ 2</span>
+          </n-form-item>
+          <n-form-item label="全局每日额度">
+            <n-input-number v-model:value="cfg.globalDailyLimit" :min="0" style="width: 150px" />
+            <span class="inline-hint">0 = 不限（护账单用）</span>
+          </n-form-item>
+        </n-form>
+      </div>
+
+      <div class="card">
+        <div class="group-label">默认 LLM（免费档用服务端自有 key）</div>
+        <n-form label-placement="left" :label-width="120" :show-feedback="false">
+          <n-form-item label="Provider">
+            <n-select v-model:value="cfg.llmProvider" :options="providerOptions" style="width: 300px" />
+          </n-form-item>
+          <n-form-item label="Base URL">
+            <n-input v-model:value="cfg.llmBaseUrl" placeholder="https://…" />
+          </n-form-item>
+          <n-form-item label="Model">
+            <n-input v-model:value="cfg.llmModel" placeholder="模型名" />
+          </n-form-item>
+        </n-form>
+      </div>
+
+      <div class="card">
+        <div class="group-label">管理员（Apple sub 白名单）</div>
+        <n-dynamic-tags v-model:value="cfg.admins" />
+        <p class="card-hint">移除自己会即时失去后台访问；可在 GCP 控制台的 humQuota/config 文档重新加回。</p>
+      </div>
+    </template>
+  </section>
 </template>
+
+<style scoped>
+.sec-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.sec-head h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  color: #1d1d1f;
+}
+.desc {
+  font-size: 13px;
+  color: #86868b;
+  margin: 4px 0 0;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #ececef;
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 16px;
+}
+.inline-hint {
+  font-size: 12px;
+  color: #98989d;
+  margin-left: 12px;
+}
+.card-hint {
+  font-size: 12px;
+  color: #98989d;
+  margin: 12px 0 0;
+}
+.center {
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}
+</style>

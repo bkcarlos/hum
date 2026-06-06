@@ -1,29 +1,31 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NButton, NCard, NEmpty, NInput, NSpace, NSpin, NTable, NTag, NText, useMessage } from 'naive-ui'
+import { NButton, NEmpty, NInput, NSpin, NTag } from 'naive-ui'
 import { getAdminUsage, setUserBan } from '@/api/client'
 import { useAdminStore } from '@/stores/admin'
 import type { AdminUsage, ApiError } from '@/types'
+import StatTile from './StatTile.vue'
 
 const admin = useAdminStore()
-const message = useMessage()
 
 const loading = ref(true)
 const busy = ref('') // sub currently being banned/unbanned
 const data = ref<AdminUsage | null>(null)
+const err = ref('')
 const day = ref(todayUTC())
 
-// Backend buckets quota by UTC day (quota.Day) — match it so the default matches.
+// Backend buckets quota by UTC day (quota.Day) — default to that so it matches.
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
 async function load() {
   loading.value = true
+  err.value = ''
   try {
     data.value = await getAdminUsage(admin.session, day.value)
   } catch (e) {
-    message.error((e as ApiError).message)
+    err.value = (e as ApiError).message
   } finally {
     loading.value = false
   }
@@ -33,10 +35,9 @@ async function toggleBan(sub: string, banned: boolean) {
   busy.value = sub
   try {
     await setUserBan(admin.session, sub, banned)
-    message.success(banned ? '已封禁。' : '已解封。')
     await load()
   } catch (e) {
-    message.error((e as ApiError).message)
+    err.value = (e as ApiError).message
   } finally {
     busy.value = ''
   }
@@ -46,58 +47,166 @@ onMounted(load)
 </script>
 
 <template>
-  <n-card title="用量与封禁">
-    <template #header-extra>
-      <n-space :size="8" align="center">
-        <n-input v-model:value="day" placeholder="YYYY-MM-DD" style="width: 140px" @keyup.enter="load" />
-        <n-button size="small" :loading="loading" @click="load">查询</n-button>
-      </n-space>
-    </template>
+  <section class="sec">
+    <header class="sec-head">
+      <div>
+        <h1>用量与封禁</h1>
+        <p class="desc">按 UTC 日统计 · 封禁立即生效</p>
+      </div>
+      <div class="picker">
+        <n-input v-model:value="day" placeholder="YYYY-MM-DD" style="width: 150px" @keyup.enter="load" />
+        <n-button type="primary" ghost :loading="loading" @click="load">查询</n-button>
+      </div>
+    </header>
 
-    <div v-if="loading" style="padding: 24px; text-align: center"><n-spin /></div>
+    <div v-if="loading" class="center"><n-spin /></div>
+    <div v-else-if="err" class="err">{{ err }}</div>
     <template v-else-if="data">
-      <n-space :size="24" align="center" style="margin-bottom: 14px">
-        <n-text>日期 <b>{{ data.day }}</b> (UTC)</n-text>
-        <n-text>
-          全站已用 <b>{{ data.globalUsed }}</b>
-          <span v-if="data.globalLimit"> / {{ data.globalLimit }}</span>
-          <span v-else> （不限）</span>
-        </n-text>
-        <n-text depth="3" style="font-size: 12px">每人额度 {{ data.perUserLimit || '不限' }}</n-text>
-      </n-space>
+      <div class="tiles">
+        <StatTile
+          label="全站已用"
+          :value="data.globalUsed"
+          :hint="data.globalLimit ? `上限 ${data.globalLimit}` : '未设全局上限'"
+          tone="accent"
+        />
+        <StatTile label="有记录用户" :value="data.users.length" :hint="`每人额度 ${data.perUserLimit || '不限'}`" />
+        <StatTile
+          label="当前封禁"
+          :value="data.users.filter((u) => u.banned).length"
+          :tone="data.users.some((u) => u.banned) ? 'error' : 'default'"
+          :hint="day + ' (UTC)'"
+        />
+      </div>
 
-      <n-empty v-if="!data.users.length" description="当日暂无用量记录" style="padding: 24px 0" />
-      <n-table v-else :bordered="false" :single-line="false" size="small">
-        <thead>
-          <tr>
-            <th>Apple sub</th>
-            <th style="width: 80px">已用</th>
-            <th style="width: 90px">状态</th>
-            <th style="width: 100px">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="u in data.users" :key="u.sub">
-            <td style="font-family: monospace; font-size: 12px; word-break: break-all">{{ u.sub }}</td>
-            <td>{{ u.used }}</td>
-            <td>
-              <n-tag :type="u.banned ? 'error' : 'success'" size="small" :bordered="false">
-                {{ u.banned ? '已封禁' : '正常' }}
-              </n-tag>
-            </td>
-            <td>
-              <n-button
-                size="tiny"
-                :type="u.banned ? 'default' : 'error'"
-                :loading="busy === u.sub"
-                @click="toggleBan(u.sub, !u.banned)"
-              >
-                {{ u.banned ? '解封' : '封禁' }}
-              </n-button>
-            </td>
-          </tr>
-        </tbody>
-      </n-table>
+      <div class="card">
+        <div class="group-label">用户列表</div>
+        <n-empty v-if="!data.users.length" description="当日暂无用量记录" style="padding: 28px 0" />
+        <table v-else class="users">
+          <thead>
+            <tr>
+              <th>Apple sub</th>
+              <th class="num">已用</th>
+              <th class="st">状态</th>
+              <th class="op">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in data.users" :key="u.sub">
+              <td class="sub">{{ u.sub }}</td>
+              <td class="num">{{ u.used }}</td>
+              <td class="st">
+                <n-tag :type="u.banned ? 'error' : 'success'" size="small" :bordered="false" round>
+                  {{ u.banned ? '已封禁' : '正常' }}
+                </n-tag>
+              </td>
+              <td class="op">
+                <n-button
+                  size="tiny"
+                  :type="u.banned ? 'default' : 'error'"
+                  :ghost="!u.banned"
+                  :loading="busy === u.sub"
+                  @click="toggleBan(u.sub, !u.banned)"
+                >
+                  {{ u.banned ? '解封' : '封禁' }}
+                </n-button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
-  </n-card>
+  </section>
 </template>
+
+<style scoped>
+.sec-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.sec-head h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  color: #1d1d1f;
+}
+.desc {
+  font-size: 13px;
+  color: #86868b;
+  margin: 4px 0 0;
+}
+.picker {
+  display: flex;
+  gap: 10px;
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.card {
+  background: #fff;
+  border: 1px solid #ececef;
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+.group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin-bottom: 14px;
+}
+.users {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.users th {
+  text-align: left;
+  font-weight: 500;
+  color: #86868b;
+  font-size: 12px;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid #f0f0f2;
+}
+.users td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #f5f5f7;
+  vertical-align: middle;
+}
+.users tr:last-child td {
+  border-bottom: none;
+}
+.sub {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #1d1d1f;
+  word-break: break-all;
+}
+.num {
+  width: 80px;
+}
+.st {
+  width: 92px;
+}
+.op {
+  width: 96px;
+}
+.center {
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}
+.err {
+  color: #d03050;
+  font-size: 13px;
+}
+@media (max-width: 820px) {
+  .tiles {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
