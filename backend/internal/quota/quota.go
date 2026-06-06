@@ -63,6 +63,14 @@ type Decision struct {
 	GlobalLimit int    `json:"globalLimit"`
 }
 
+// UserUsage is one user's metered usage on a given day plus their ban state,
+// for the admin usage/users view.
+type UserUsage struct {
+	Sub    string `json:"sub"`
+	Used   int    `json:"used"`
+	Banned bool   `json:"banned"`
+}
+
 // ErrNotFound is returned by stores when a document/config doesn't exist yet.
 var ErrNotFound = errors.New("quota: not found")
 
@@ -85,6 +93,11 @@ type Store interface {
 
 	GetUserUsage(ctx context.Context, sub, day string) (int, error)
 	GetGlobalUsage(ctx context.Context, day string) (int, error)
+
+	// AdminUsage returns the global metered count for day plus per-user usage with
+	// ban state — the union of users who used quota that day and all banned users
+	// (unordered; the caller sorts). For the admin dashboard.
+	AdminUsage(ctx context.Context, day string) (global int, users []UserUsage, err error)
 
 	IsBanned(ctx context.Context, sub string) (bool, error)
 	SetBanned(ctx context.Context, sub string, banned bool) error

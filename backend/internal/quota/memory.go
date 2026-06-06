@@ -2,6 +2,7 @@ package quota
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
@@ -90,6 +91,33 @@ func (m *MemoryStore) GetGlobalUsage(_ context.Context, day string) (int, error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.global[day], nil
+}
+
+func (m *MemoryStore) AdminUsage(_ context.Context, day string) (int, []UserUsage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	byUser := map[string]*UserUsage{}
+	prefix := day + "|"
+	for k, used := range m.user {
+		if sub, ok := strings.CutPrefix(k, prefix); ok {
+			byUser[sub] = &UserUsage{Sub: sub, Used: used}
+		}
+	}
+	for sub, banned := range m.banned {
+		if !banned {
+			continue
+		}
+		if u, ok := byUser[sub]; ok {
+			u.Banned = true
+		} else {
+			byUser[sub] = &UserUsage{Sub: sub, Banned: true}
+		}
+	}
+	out := make([]UserUsage, 0, len(byUser))
+	for _, u := range byUser {
+		out = append(out, *u)
+	}
+	return m.global[day], out, nil
 }
 
 func (m *MemoryStore) IsBanned(_ context.Context, sub string) (bool, error) {

@@ -2,10 +2,12 @@ package quota
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -28,6 +30,16 @@ const (
 type fsCounter struct {
 	Count int `firestore:"count"`
 }
+
+// fsUserCounter is the per-user/day doc. Day+Sub are denormalized (also encoded
+// in the doc id day__sub) so the admin view can query a day's users with a
+// single-field filter (Where day==) — no composite index, no doc-id parsing.
+type fsUserCounter struct {
+	Count int    `firestore:"count"`
+	Day   string `firestore:"day"`
+	Sub   string `firestore:"sub"`
+}
+
 type fsBan struct {
 	Banned bool `firestore:"banned"`
 }
@@ -141,7 +153,7 @@ func (s *FirestoreStore) Reserve(ctx context.Context, sub, day string, cfg Confi
 			if err := tx.Set(globalRef, fsCounter{Count: gUsed + 1}); err != nil {
 				return err
 			}
-			if err := tx.Set(userRef, fsCounter{Count: uUsed + 1}); err != nil {
+			if err := tx.Set(userRef, fsUserCounter{Count: uUsed + 1, Day: day, Sub: sub}); err != nil {
 				return err
 			}
 			d.GlobalUsed, d.UserUsed = gUsed+1, uUsed+1
@@ -173,7 +185,7 @@ func (s *FirestoreStore) Refund(ctx context.Context, sub, day string) error {
 			}
 		}
 		if uUsed > 0 {
-			if err := tx.Set(userRef, fsCounter{Count: uUsed - 1}); err != nil {
+			if err := tx.Set(userRef, fsUserCounter{Count: uUsed - 1, Day: day, Sub: sub}); err != nil {
 				return err
 			}
 		}
@@ -187,6 +199,67 @@ func (s *FirestoreStore) GetUserUsage(ctx context.Context, sub, day string) (int
 
 func (s *FirestoreStore) GetGlobalUsage(ctx context.Context, day string) (int, error) {
 	return docCount(ctx, s.client.Collection(fsColGlobal).Doc(day))
+}
+
+func (s *FirestoreStore) AdminUsage(ctx context.Context, day string) (int, []UserUsage, error) {
+	global, err := docCount(ctx, s.client.Collection(fsColGlobal).Doc(day))
+	if err != nil {
+		return 0, nil, err
+	}
+
+	byUser := map[string]*UserUsage{}
+	uit := s.client.Collection(fsColUser).Where("day", "==", day).Documents(ctx)
+	defer uit.Stop()
+	for {
+		snap, err := uit.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return 0, nil, err
+		}
+		var c fsUserCounter
+		if err := snap.DataTo(&c); err != nil {
+			return 0, nil, err
+		}
+		sub := c.Sub
+		if sub == "" { // defensive: older docs without the denormalized field
+			sub = strings.TrimPrefix(snap.Ref.ID, day+"__")
+		}
+		byUser[sub] = &UserUsage{Sub: sub, Used: c.Count}
+	}
+
+	// Union in banned users (a ban may have no usage that day).
+	bit := s.client.Collection(fsColBans).Documents(ctx)
+	defer bit.Stop()
+	for {
+		snap, err := bit.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return 0, nil, err
+		}
+		var b fsBan
+		if err := snap.DataTo(&b); err != nil {
+			return 0, nil, err
+		}
+		if !b.Banned {
+			continue
+		}
+		sub := snap.Ref.ID
+		if u, ok := byUser[sub]; ok {
+			u.Banned = true
+		} else {
+			byUser[sub] = &UserUsage{Sub: sub, Banned: true}
+		}
+	}
+
+	out := make([]UserUsage, 0, len(byUser))
+	for _, u := range byUser {
+		out = append(out, *u)
+	}
+	return global, out, nil
 }
 
 func (s *FirestoreStore) IsBanned(ctx context.Context, sub string) (bool, error) {

@@ -140,6 +140,11 @@ func main() {
 			admin := api.Group("/admin")
 			admin.Use(h.AdminOnly())
 			admin.GET("/me", h.AdminMe) // gate canary the admin UI hits on load
+			admin.GET("/config", h.AdminGetConfig)
+			admin.POST("/config", h.AdminUpdateConfig) // POST (not PUT): GET/POST-only API
+			admin.GET("/usage", h.AdminUsage)
+			admin.POST("/users/:sub/ban", h.AdminBan)
+			admin.POST("/users/:sub/unban", h.AdminUnban)
 		}
 	}
 

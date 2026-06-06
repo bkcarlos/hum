@@ -46,6 +46,11 @@ func adminRouter(h *Handlers) *gin.Engine {
 	a := g.Group("/admin")
 	a.Use(h.AdminOnly())
 	a.GET("/me", h.AdminMe)
+	a.GET("/config", h.AdminGetConfig)
+	a.POST("/config", h.AdminUpdateConfig)
+	a.GET("/usage", h.AdminUsage)
+	a.POST("/users/:sub/ban", h.AdminBan)
+	a.POST("/users/:sub/unban", h.AdminUnban)
 	return r
 }
 
