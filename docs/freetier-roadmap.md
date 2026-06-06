@@ -2,7 +2,7 @@
 
 > 版本：v0.1
 > 日期：2026-06-07
-> 文档状态：进行中（C0–C4 已完成代码，余 C5/iOS + C-GCP；免费档默认关闭）
+> 文档状态：进行中（C0–C4 + C6/网页 Apple 登录 已完成代码，余 C5/iOS + C-GCP/Apple 配置；免费档默认关闭）
 > 一句话：让 App Store 用户**无需自带 LLM key** 也能用——用 Sign in with Apple 识别用户，在**服务端自有 key** 上按配额提供免费额度；重度用户仍可 BYOK（自带 key、不限量）。
 
 ---
@@ -33,8 +33,9 @@
 | C2 | 管理员身份（`/auth/me` + admin 白名单 + `AdminOnly` 中间件） | ✅ `4168c4d` | `go test -race` 全过 + 实跑（anon 401 / 非管理员 403 / 管理员 200） |
 | C3 | 管理 API（用量/用户列表、封禁/解禁、读写配额配置） | ✅ `7a23142` | `go test -race` 全过 + 实跑（config CRUD / 封禁→拒绝 / 用量聚合 / bad-day 400） |
 | C4 | 管理后台页面（受保护 UI） | ✅ `84b93c0` | 实跑验证（登录门 / 配置保存留存 / 用量表 / 解封往返 / 非管理员被拒）；`vue-tsc`+`vite build` 全过 |
-| C5 | iOS 接入 Sign in with Apple + 免费档 + 429 文案 | ⬜ 待做（下一步） | **需 Xcode 验证** |
-| C-GCP | GCP 准备（你来做） | ⬜ 待做 | 见 §6 |
+| C5 | iOS 接入 Sign in with Apple + 免费档 + 429 文案 | ⬜ 待做 | **需 Xcode 验证** |
+| C6 | 网页版 Sign in with Apple（多 aud 验签 + 后台 Apple 登录 + 主站免费档/BYOK 切换） | ✅ `ed55588`/`d0e31f1`/`4eaa281` | 后端可测；网页 Apple 弹窗**需 Services ID 后你验**（见 §6.B） |
+| C-GCP | GCP + Apple 准备（你来做） | ⬜ 待做 | 见 §6 |
 
 ## 4. 待完成详情
 
@@ -86,13 +87,23 @@
 | `FREE_TIER_GLOBAL_DAILY` | 全局每日额度（默认 0=不限；用于护账单） |
 | `FIRESTORE_PROJECT` | 设了用 Firestore，否则内存（单实例，仅 dev） |
 | `ADMIN_APPLE_SUBS` | 管理员 Apple sub 白名单种子（CSV，**仅首启** seed 进 `humQuota/config` 的 `admins[]`；之后以控制台文档为准） |
+| `APPLE_WEB_CLIENT_ID` | （C6，可选）网页版 Sign in with Apple 的 **Services ID**；设了才在网页显示 Apple 登录按钮，并把它加进可接受的 `aud`。不影响 iOS。 |
+| `APPLE_WEB_REDIRECT_URI` | （C6，可选）Services ID 上登记的 **Return URL**（如 `https://<域名>/admin`），传给 Apple-JS。 |
 
-## 6. C-GCP · 你需要做的（部署免费档前）
+## 6. 你需要做的（部署免费档前）
 
+### 6.A · GCP（免费档后端）
 1. 开启 **Firestore（Native 模式）**。
 2. 给 Cloud Run 服务账号授 `roles/datastore.user`。
 3. 把 `DEFAULT_LLM_API_KEY` 放 **Secret Manager**，在 Cloud Run 以环境变量注入；同时设置 `SESSION_SECRET`、`APPLE_BUNDLE_ID`、`DEFAULT_LLM_*`、`FREE_TIER_*`、`FIRESTORE_PROJECT`。
 4. 部署后：可在 Firestore 控制台直接改 `humQuota/config` 文档调额度/开关——即时生效、不重启。
+
+### 6.B · Apple 开发者后台（C6 · 网页版 Sign in with Apple，可选）
+> 不做这步也行：iOS 用原生 Apple 登录，网页则维持 BYOK；做了网页用户才能用免费档、管理员也能在网页一键登录。
+1. **Certificates, Identifiers & Profiles → Identifiers → 新建 Services ID**（如 `com.carlosbk.hum.web`），勾选 **Sign in with Apple**。
+2. 配置该 Services ID：**Primary App ID** 选你的 iOS App ID（同一团队 → 同一用户 `sub`，配额按人统一）；**Domains** 填站点域名，**Return URLs** 填如 `https://<域名>/admin`（和主站登录用的页面）。
+3. Cloud Run 设环境变量：`APPLE_WEB_CLIENT_ID=<Services ID>`、`APPLE_WEB_REDIRECT_URI=<上面登记的 Return URL>`。
+4. 部署后：网页登录页/接入设置会自动出现「通过 Apple 登录」。`GET /api/auth/apple/web` 可自检是否 `enabled:true`。
 
 ## 7. Firestore 数据布局
 
