@@ -2,7 +2,7 @@
 
 > 版本：v0.1
 > 日期：2026-06-07
-> 文档状态：进行中（C0/C1/C2 已完成代码，免费档默认关闭）
+> 文档状态：进行中（C0–C4 已完成代码，余 C5/iOS + C-GCP；免费档默认关闭）
 > 一句话：让 App Store 用户**无需自带 LLM key** 也能用——用 Sign in with Apple 识别用户，在**服务端自有 key** 上按配额提供免费额度；重度用户仍可 BYOK（自带 key、不限量）。
 
 ---
@@ -31,9 +31,9 @@
 | C0 | 免费档后端：quota 引擎 + Apple 验签/session + 接线（MemoryStore） | ✅ `520d078` | `go test -race` 全过 + 实跑 |
 | C1 | Firestore 配额存储（事务化、配置热更、boot 失败回退内存） | ✅ `0888066` | 编译+接口校验+回退实测；**运行时待 GCP 验** |
 | C2 | 管理员身份（`/auth/me` + admin 白名单 + `AdminOnly` 中间件） | ✅ `4168c4d` | `go test -race` 全过 + 实跑（anon 401 / 非管理员 403 / 管理员 200） |
-| C3 | 管理 API（用量/用户列表、封禁/解禁、读写配额配置） | ⬜ 待做（下一步） | 可测 |
-| C4 | 管理后台页面（受保护 UI） | ⬜ 待做 | 前端 |
-| C5 | iOS 接入 Sign in with Apple + 免费档 + 429 文案 | ⬜ 待做 | **需 Xcode 验证** |
+| C3 | 管理 API（用量/用户列表、封禁/解禁、读写配额配置） | ✅ `7a23142` | `go test -race` 全过 + 实跑（config CRUD / 封禁→拒绝 / 用量聚合 / bad-day 400） |
+| C4 | 管理后台页面（受保护 UI） | ✅ `84b93c0` | 实跑验证（登录门 / 配置保存留存 / 用量表 / 解封往返 / 非管理员被拒）；`vue-tsc`+`vite build` 全过 |
+| C5 | iOS 接入 Sign in with Apple + 免费档 + 429 文案 | ⬜ 待做（下一步） | **需 Xcode 验证** |
 | C-GCP | GCP 准备（你来做） | ⬜ 待做 | 见 §6 |
 
 ## 4. 待完成详情
@@ -49,15 +49,20 @@
 - **bootstrap**：登录后用 `/auth/me` 拿到自己的 `sub` → 写进 `humQuota/config` 文档的 `admins[]`（或首启设 `ADMIN_APPLE_SUBS`）→ 即为管理员。
 - **验收（已过）**：非管理员访问 admin 路由 403；白名单内 200；改白名单即时生效（内存即时；Firestore ≤30s 配置缓存）。
 
-### C3 · 管理 API（挂 `/api/admin/*`，过 `AdminOnly` 中间件——C2 已就绪）
-- `GET /admin/config` / `PUT /admin/config`：读/写配额配置（开关、每人/全局额度、默认 LLM provider/model/baseUrl）。⚠️ `admins[]` 也在这同一个 config 文档里——`PUT` 必须**保留**它（或显式管理），别让前端漏传字段把管理员名单清空。
-- `GET /admin/usage?day=YYYY-MM-DD`：全局当日用量 + Top 用户。
-- `GET /admin/users` / `POST /admin/users/{sub}/ban` / `unban`。
-- **验收**：改配置后 `resolveProvider` 即时按新值执行；封禁用户立刻 429 `banned`。
+### C3 · 管理 API ✅（`7a23142`，挂 `/api/admin/*`，过 `AdminOnly`）
+- `GET /admin/config` / **`POST`** `/admin/config`：读/写配额配置（开关、每人/全局额度、默认 LLM provider/model/baseUrl）。**用 POST 不用 PUT**——对齐项目"仅 GET/POST" 约定 + CORS。写入是**部分 patch**（指针字段，缺省即不动）：`admins[]` 在同一 config 文档里，漏传它**不会**被清空（read-modify-write 保留）。还校验 provider 合法、负数额度归零。
+- `GET /admin/usage?day=YYYY-MM-DD`：全局当日用量 + **每用户用量表**（含封禁标记，按用量降序；并入"封禁但当日零用量"的用户）。`day` 缺省=今天(UTC)。**合并了原计划的 `/admin/users`**（用户列表就是这张表）。
+- `POST /admin/users/{sub}/ban` / `unban`：封禁读取是**实时**的（不像 config 有缓存），下次计费调用立即 429 `banned`。
+- 存储新增 `AdminUsage(day)→(global,[]UserUsage)`（两套 Store 都实现；Firestore 给用户计数 doc 反范式化 `day`/`sub` 以便单字段查询、免复合索引）。
+- **验收（已过）**：改配置后 `resolveProvider` 即时按新值执行；封禁用户立刻 429 `banned`；`go test -race` + 实跑全过。
 
-### C4 · 管理后台页面
-- 一个受保护页面（可挂现有前端 `/admin`，或独立小页）：管理员用 Sign in with Apple 登录 → 看当日用量曲线 + 用户列表 + 改额度/开关 + 封禁。
-- **验收**：非管理员进不去；改额度/封禁的效果与 C3 API 一致。
+### C4 · 管理后台页面 ✅（`84b93c0`）
+- 受保护页面 `/admin`：**无 vue-router**——`main.ts` 按路径前缀挂独立的 `AdminApp` 根（走 SPA fallback），且**不**加载 BYOK key store。
+- 登录：**粘贴** Sign in with Apple session 令牌（`/auth/apple` 签发）→ 验 `/admin/me` → 存 localStorage；非管理员(403)/失效令牌给出明确提示并清除会话。
+- 配置卡：改 live 策略（开关、每人/全局额度、默认 provider/baseUrl/model）+ 管理员白名单（动态标签）；整份提交、服务端合并留存、即时生效。用量卡：当日全局+每用户表 + 即时封禁/解封。
+- `api/client.ts` 加 `adminMe/getAdminConfig/updateAdminConfig/getAdminUsage/setUserBan`（Bearer session，复用 `{data}` 拆包拦截器）。
+- **跟进项**：完整的**网页版 Sign in with Apple**（Apple-JS + Services ID + 验签放宽到多 aud）未做——个人运营先用"粘贴令牌"即可；网页 Apple 登录留待需要时再加。
+- **验收（已过）**：非管理员进不去；改额度/封禁效果与 C3 一致（实跑：配置保存留存、解封往返、非管理员被拒）。
 
 ### C5 · iOS 接入
 - Xcode 加 **Sign in with Apple** capability（entitlement `com.apple.developer.applesignin`）+ 开发者后台开启。
