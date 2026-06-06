@@ -2,7 +2,7 @@
 
 > 版本：v0.1
 > 日期：2026-06-07
-> 文档状态：进行中（C0/C1 已完成并上线代码，免费档默认关闭）
+> 文档状态：进行中（C0/C1/C2 已完成代码，免费档默认关闭）
 > 一句话：让 App Store 用户**无需自带 LLM key** 也能用——用 Sign in with Apple 识别用户，在**服务端自有 key** 上按配额提供免费额度；重度用户仍可 BYOK（自带 key、不限量）。
 
 ---
@@ -30,26 +30,27 @@
 |---|---|---|---|
 | C0 | 免费档后端：quota 引擎 + Apple 验签/session + 接线（MemoryStore） | ✅ `520d078` | `go test -race` 全过 + 实跑 |
 | C1 | Firestore 配额存储（事务化、配置热更、boot 失败回退内存） | ✅ `0888066` | 编译+接口校验+回退实测；**运行时待 GCP 验** |
-| C2 | 管理员身份（`/auth/me` + `config/admins` 白名单 + admin 中间件） | ⬜ 待做（下一步） | 可测 |
-| C3 | 管理 API（用量/用户列表、封禁/解禁、读写配额配置） | ⬜ 待做 | 可测 |
+| C2 | 管理员身份（`/auth/me` + admin 白名单 + `AdminOnly` 中间件） | ✅ `4168c4d` | `go test -race` 全过 + 实跑（anon 401 / 非管理员 403 / 管理员 200） |
+| C3 | 管理 API（用量/用户列表、封禁/解禁、读写配额配置） | ⬜ 待做（下一步） | 可测 |
 | C4 | 管理后台页面（受保护 UI） | ⬜ 待做 | 前端 |
 | C5 | iOS 接入 Sign in with Apple + 免费档 + 429 文案 | ⬜ 待做 | **需 Xcode 验证** |
 | C-GCP | GCP 准备（你来做） | ⬜ 待做 | 见 §6 |
 
 ## 4. 待完成详情
 
-### C2 · 管理员身份
+### C2 · 管理员身份 ✅（`4168c4d`）
 - **目标**：定义"谁是管理员"并可动态修改，不重启。
-- **设计**：管理员 = Firestore `config/admins` 里的 Apple `sub` 白名单；管理员也走 Sign in with Apple，中间件校验 `sub` 是否在白名单。
-- **改动**：
-  - `GET /api/auth/me`：带 session 返回当前 `sub`（用于 bootstrap 第一个管理员 + 后台展示）。
-  - `internal/auth` 或 `internal/quota`：admins 白名单读取（带缓存）+ `IsAdmin(sub)`。
-  - admin 中间件：校验 Bearer session 的 `sub` ∈ admins，否则 403。
-- **bootstrap**：登录后用 `/auth/me` 拿到自己的 `sub` → 写进 Firestore `config/admins` → 即为管理员。
-- **验收**：非管理员访问 admin 路由 403；白名单内 200；改白名单即时生效。
+- **设计（已落地）**：管理员 = Apple `sub` 白名单，**存在 live 配额配置文档 `humQuota/config` 的 `admins[]` 字段里**（不是单独的 `config/admins` 集合）——直接复用现有 `GetConfig` 的 ~30s 缓存与"控制台改、不重启"路径，`IsAdmin` 只读缓存配置、零额外存储方法。管理员也走 Sign in with Apple，中间件校验 `sub` 是否在白名单。
+- **改动（已实现）**：
+  - `GET /api/auth/me`（任意有效 session，含非管理员）：返回 `{sub, isAdmin}`。`sub` 用于 bootstrap 第一个管理员；`isAdmin` 供前端决定是否露出管理入口（best-effort，真正的门是 `AdminOnly`）。
+  - `quota.Config` 新增 `Admins []string` + `IsAdmin(sub)`；`config` 新增 `ADMIN_APPLE_SUBS`（CSV）首启种子。
+  - `handlers.AdminOnly()` 中间件：校验 Bearer session 的 `sub` ∈ `admins`，否则 401（无 session）/ 403（非管理员）；**fail closed**（存储出错即拒绝），并把 `sub` 写进 gin context 供 C3 用。
+  - `GET /api/admin/me`：过 `AdminOnly` 的"探针"，管理后台加载时调它确认权限。
+- **bootstrap**：登录后用 `/auth/me` 拿到自己的 `sub` → 写进 `humQuota/config` 文档的 `admins[]`（或首启设 `ADMIN_APPLE_SUBS`）→ 即为管理员。
+- **验收（已过）**：非管理员访问 admin 路由 403；白名单内 200；改白名单即时生效（内存即时；Firestore ≤30s 配置缓存）。
 
-### C3 · 管理 API（挂 `/api/admin/*`，过 admin 中间件）
-- `GET /admin/config` / `PUT /admin/config`：读/写配额配置（开关、每人/全局额度、默认 LLM provider/model/baseUrl）。
+### C3 · 管理 API（挂 `/api/admin/*`，过 `AdminOnly` 中间件——C2 已就绪）
+- `GET /admin/config` / `PUT /admin/config`：读/写配额配置（开关、每人/全局额度、默认 LLM provider/model/baseUrl）。⚠️ `admins[]` 也在这同一个 config 文档里——`PUT` 必须**保留**它（或显式管理），别让前端漏传字段把管理员名单清空。
 - `GET /admin/usage?day=YYYY-MM-DD`：全局当日用量 + Top 用户。
 - `GET /admin/users` / `POST /admin/users/{sub}/ban` / `unban`。
 - **验收**：改配置后 `resolveProvider` 即时按新值执行；封禁用户立刻 429 `banned`。
@@ -79,6 +80,7 @@
 | `FREE_TIER_PER_USER_DAILY` | 每人每日额度（默认 20；1 推荐≈2） |
 | `FREE_TIER_GLOBAL_DAILY` | 全局每日额度（默认 0=不限；用于护账单） |
 | `FIRESTORE_PROJECT` | 设了用 Firestore，否则内存（单实例，仅 dev） |
+| `ADMIN_APPLE_SUBS` | 管理员 Apple sub 白名单种子（CSV，**仅首启** seed 进 `humQuota/config` 的 `admins[]`；之后以控制台文档为准） |
 
 ## 6. C-GCP · 你需要做的（部署免费档前）
 
@@ -90,11 +92,10 @@
 ## 7. Firestore 数据布局
 
 ```
-humQuota/config            → 配额配置（Config，可后台/控制台改）
+humQuota/config            → 配额配置 + 管理员白名单（Config，含 admins[]；控制台改、不重启）
 humQuotaGlobal/{day}       → { count }   全局当日计数
 humQuotaUser/{day}__{sub}  → { count }   每用户当日计数
 humQuotaBans/{sub}         → { banned }  封禁标记（不存在=未封）
-config/admins              → 管理员 Apple sub 白名单（C2 待建）
 ```
 
 ## 8. 已定的设计决策
@@ -103,7 +104,7 @@ config/admins              → 管理员 Apple sub 白名单（C2 待建）
 - 失败/空结果的免费请求 **退款**，不烧额度。
 - BYOK 永远不限量、不经配额。
 - 配额"动态不重启"由 **Firestore 配置文档 + 实时读取** 实现，管理后台只是它的 UI。
-- 管理员身份用 **Apple sub 白名单**（非共享口令），改名单即时生效。
+- 管理员身份用 **Apple sub 白名单**（非共享口令），改名单即时生效。名单存 `humQuota/config` 的 `admins[]` 字段（复用 live config 缓存，不另建集合）；`ADMIN_APPLE_SUBS` 仅作首启种子。
 
 ## 9. 验证与上线顺序
 
