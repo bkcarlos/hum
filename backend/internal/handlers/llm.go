@@ -116,12 +116,13 @@ func (h *Handlers) Rank(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, "bad_request", "候选池为空，无法排序。")
 		return
 	}
-	p, ok := h.provider(c, body.LLM)
+	p, refund, ok := h.resolveProvider(c, body.LLM, true)
 	if !ok {
 		return
 	}
 	res, err := p.RankSongs(c.Request.Context(), body.Intent, body.Candidates, body.Instruction)
 	if err != nil {
+		refund() // failed call shouldn't burn free-tier quota
 		writeLLMError(c, err)
 		return
 	}

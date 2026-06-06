@@ -9,7 +9,7 @@
 ## 不可破坏的红线（改动前必读）
 
 1. **黄金原则——Apple 才是"歌是否存在"的事实来源，LLM 不自行断定。** 自 2026-06-03 起采用**方案 A**：① LLM **提名**真实歌曲（歌名+歌手）并附展示用 `Intent`（`POST /api/suggest` → `llm.SuggestSongs`）；② 后端逐条**去 Apple 解析校验**（`applemusic.Client.ResolveSong`：标题归一化匹配 + 歌手软匹配），**解析不到的直接丢弃** → 得到全是真实曲目的候选池；③ LLM 再对池**排序**（`/api/rank` → `RankSongs`，仍丢弃池外 id）。两道关卡（`ResolveSong` + `RankSongs` 的 id 过滤）杜绝编造/张冠李戴。旧的关键词检索 `/api/apple/search` + `buildSearchTerms` 仍在但 UI 不再调用——它对 vibe 查询会搜空，正是方案 A 取代它的原因。
-2. **BYOK key 用完即弃。** 用户 LLM key **只**经 `X-LLM-Api-Key` 请求头传入，单次请求内使用，**绝不落库/缓存/写日志**。日志中间件 [`backend/internal/middleware/logger.go`](backend/internal/middleware/logger.go) 只记录 method/path/status，并维护敏感 header 名单。非敏感配置（provider/baseUrl/model）走 body——让脱敏成为单一 header 规则。Gemini 用 `x-goog-api-key` 头而非 `?key=`。`config` 里**不允许**出现任何 LLM key。
+2. **BYOK key 用完即弃。** 用户 LLM key **只**经 `X-LLM-Api-Key` 请求头传入，单次请求内使用，**绝不落库/缓存/写日志**。日志中间件 [`backend/internal/middleware/logger.go`](backend/internal/middleware/logger.go) 只记录 method/path/status，并维护敏感 header 名单。非敏感配置（provider/baseUrl/model）走 body——让脱敏成为单一 header 规则。Gemini 用 `x-goog-api-key` 头而非 `?key=`。`config` 里**不允许**出现任何**用户** LLM key。**唯一例外**：Sign in with Apple 免费档用的**服务端自有**默认 key（`DEFAULT_LLM_API_KEY`，走 Secret Manager 注入、绝不写日志）——它是运营密钥、不来自用户、不随请求，与"用户 key 用完即弃"是两回事（见 `internal/handlers/freetier.go` 的 `resolveProvider`：有 `X-LLM-Api-Key` 走 BYOK 不限量，否则凭 session + 配额用默认 key）。
 3. **Apple MusicKit ToS。** 不收费/不接广告/不内购；播放须用户主动发起且有标准控件；不下载/转发音频文件；API 建的歌单私有、不可经 API 公开；不绕过订阅。
 
 > 任何编辑触及 LLM 排序、`handlers/`、`middleware/`、日志或新功能时，逐条对照上面三点。

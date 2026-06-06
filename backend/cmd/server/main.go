@@ -16,10 +16,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/bkcarlos/hum/internal/applemusic"
+	"github.com/bkcarlos/hum/internal/auth"
 	"github.com/bkcarlos/hum/internal/config"
 	"github.com/bkcarlos/hum/internal/handlers"
 	"github.com/bkcarlos/hum/internal/httpx"
 	"github.com/bkcarlos/hum/internal/middleware"
+	"github.com/bkcarlos/hum/internal/quota"
 )
 
 func main() {
@@ -59,6 +61,33 @@ func main() {
 
 	h := handlers.New(cfg, tokens, apple)
 
+	// Free tier (Sign in with Apple + server default key under quota) is optional.
+	// Off unless DEFAULT_LLM_API_KEY / SESSION_SECRET / APPLE_BUNDLE_ID / model are
+	// set — then suggest/rank also accept a Bearer session metered by quota.
+	freeTierOn := false
+	if cfg.FreeTierConfigured() {
+		seed := quota.Config{
+			Enabled:           cfg.FreeTierEnabled,
+			PerUserDailyLimit: cfg.FreeTierPerUser,
+			GlobalDailyLimit:  cfg.FreeTierGlobal,
+			LLMProvider:       cfg.DefaultLLMProvider,
+			LLMBaseURL:        cfg.DefaultLLMBaseURL,
+			LLMModel:          cfg.DefaultLLMModel,
+		}
+		// TODO(P1-slice2): use the Firestore store when cfg.FirestoreProject != "".
+		store := quota.NewMemoryStore(seed)
+		if cfg.FirestoreProject != "" {
+			slog.Warn("free tier: FIRESTORE_PROJECT set but Firestore store not wired yet — using in-memory (single-instance)")
+		} else {
+			slog.Warn("free tier: using in-memory quota (single-instance; not shared across Cloud Run instances)")
+		}
+		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleBundleID, cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
+		freeTierOn = true
+		slog.Info("free tier enabled", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal)
+	} else {
+		slog.Info("free tier disabled — suggest/rank are BYOK-only (set DEFAULT_LLM_API_KEY/SESSION_SECRET/APPLE_BUNDLE_ID/DEFAULT_LLM_MODEL to enable)")
+	}
+
 	r := gin.New()
 	_ = r.SetTrustedProxies(nil) // don't trust any proxy headers by default
 	r.Use(gin.Recovery())
@@ -66,8 +95,8 @@ func main() {
 	r.Use(cors.New(cors.Config{
 		AllowOrigins: cfg.CORSAllowedOrigins,
 		AllowMethods: []string{"GET", "POST", "OPTIONS"},
-		// Custom headers carrying the BYOK key and Music User Token must be allowed.
-		AllowHeaders:     []string{"Origin", "Content-Type", "X-LLM-Api-Key", "Music-User-Token"},
+		// Custom headers: BYOK key, Music User Token, and the free-tier session Bearer.
+		AllowHeaders:     []string{"Origin", "Content-Type", "X-LLM-Api-Key", "Music-User-Token", "Authorization"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
@@ -89,6 +118,11 @@ func main() {
 		api.POST("/rank", h.Rank)
 		api.POST("/suggest", h.Suggest)   // Option A: LLM proposes songs → resolved against Apple
 		api.POST("/examples", h.Examples) // personalized empty-state example prompts
+
+		// Free tier: exchange a Sign in with Apple identity token for a session.
+		if freeTierOn {
+			api.POST("/auth/apple", h.AppleAuth)
+		}
 	}
 
 	// 方案 1 (single-service): also serve the built frontend from WebDir with SPA

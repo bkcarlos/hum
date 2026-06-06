@@ -5,7 +5,9 @@ import (
 	"context"
 
 	"github.com/bkcarlos/hum/internal/applemusic"
+	"github.com/bkcarlos/hum/internal/auth"
 	"github.com/bkcarlos/hum/internal/config"
+	"github.com/bkcarlos/hum/internal/quota"
 )
 
 // llmAPIKeyHeader is the ONLY place the BYOK user key travels. It is read per
@@ -31,8 +33,30 @@ type Handlers struct {
 	cfg    *config.Config
 	tokens *applemusic.TokenManager
 	apple  AppleService
+
+	// Free tier (optional). When set via WithFreeTier, suggest/rank accept a Sign
+	// in with Apple session + the server's default key under quota. nil → BYOK-only
+	// (suggest/rank require X-LLM-Api-Key, exactly as before).
+	quota         quota.Store
+	appleAuth     *auth.AppleVerifier
+	sessionSecret []byte
 }
 
 func New(cfg *config.Config, tokens *applemusic.TokenManager, apple AppleService) *Handlers {
 	return &Handlers{cfg: cfg, tokens: tokens, apple: apple}
+}
+
+// WithFreeTier wires the Sign in with Apple free tier (server default key under
+// quota). Returns the same *Handlers for chaining. Leave unset for BYOK-only.
+func (h *Handlers) WithFreeTier(store quota.Store, verifier *auth.AppleVerifier, sessionSecret []byte) *Handlers {
+	h.quota = store
+	h.appleAuth = verifier
+	h.sessionSecret = sessionSecret
+	return h
+}
+
+// freeTierReady reports whether the free tier is fully wired (deps + server key).
+func (h *Handlers) freeTierReady() bool {
+	return h.quota != nil && h.appleAuth != nil && len(h.sessionSecret) > 0 &&
+		h.cfg != nil && h.cfg.DefaultLLMKey != ""
 }

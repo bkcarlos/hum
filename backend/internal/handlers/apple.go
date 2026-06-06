@@ -137,18 +137,20 @@ func (h *Handlers) Suggest(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, "bad_request", "缺少 storefront（请先授权 Apple Music）。")
 		return
 	}
-	p, ok := h.provider(c, body.LLM)
+	p, refund, ok := h.resolveProvider(c, body.LLM, true)
 	if !ok {
 		return
 	}
 	sug, err := p.SuggestSongs(c.Request.Context(), body.Text, body.SeedArtists)
 	if err != nil {
+		refund() // failed call shouldn't burn free-tier quota
 		writeLLMError(c, err)
 		return
 	}
 
 	pool, unresolved := h.resolveSuggestions(c.Request.Context(), body.Storefront, sug.Suggestions)
 	if len(pool) == 0 {
+		refund() // no usable result → give the quota back
 		httpx.Fail(c, http.StatusNotFound, "empty_pool",
 			"AI 推荐的歌在 Apple Music 上都没匹配到，请换个说法或更具体些。")
 		return
