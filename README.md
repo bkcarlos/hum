@@ -176,3 +176,11 @@ docker run -p 8080:8080 \
 - UI 库选 **Naive UI**，后端框架选 **Gin**（文档中的二选一）
 - LLM key 只走请求头，非敏感配置（provider/baseUrl/model）走 body —— 让日志脱敏成为单一 header 规则
 - 数据库暂不接入（F8 非 MVP），保留接入位
+
+## 许可 License
+
+本项目采用 **[PolyForm Noncommercial License 1.0.0](LICENSE)**：**允许任何非商业用途**（个人学习、研究、爱好，以及非营利 / 教育 / 政府机构等）下的使用、修改与分发，**禁止任何商业化使用**。
+
+> ⚠️ 这是一份 **source-available（源码公开）** 协议，而非 OSI 定义的"开源"协议——后者按定义必须允许商业使用。本项目刻意选择"公开但不可商用"，契合个人自用、不商业化的定位，也与 Apple MusicKit ToS（不收费 / 不接广告 / 不内购）一致。
+
+© 2026 bkcarlos · 如需商业授权请单独联系作者。
