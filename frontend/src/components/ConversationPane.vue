@@ -16,6 +16,9 @@ const rec = useRecommendation()
 
 const input = ref('')
 const seeds = ref('')
+// Seeds only feed the first-turn pipeline (refine ignores them), so the box stays
+// collapsed until asked for — keeps the composer light.
+const showSeeds = ref(false)
 
 // Empty-state inspiration: a pool of natural-language prompts (not atomic tags)
 // that show what to type and play to Option A's strength. We surface a few —
@@ -115,6 +118,18 @@ function onKeydown(e: KeyboardEvent) {
       <n-text depth="3" style="font-size: 12px">左边“指挥”，右边“验收”</n-text>
     </header>
 
+    <!-- Current conditions: the parsed intent is the real persistent state, so it
+         sits up top (editable chips), with its own re-search right beside it —
+         spatially separate from the natural-language refine down in the composer. -->
+    <div v-if="convo.hasIntent" class="conditions">
+      <div class="chips-scroll"><IntentChips /></div>
+      <div class="intent-actions">
+        <n-button size="tiny" tertiary :disabled="rec.loading.value" @click="rec.researchFromIntent()">
+          用编辑后的条件重搜
+        </n-button>
+      </div>
+    </div>
+
     <n-scrollbar class="stream">
       <!-- Empty state: hero + tappable example prompts + how-it-works (F2) -->
       <div v-if="!convo.messages.length" class="welcome">
@@ -151,26 +166,26 @@ function onKeydown(e: KeyboardEvent) {
       </div>
     </n-scrollbar>
 
-    <IntentChips />
-
-    <div v-if="convo.hasIntent" class="intent-actions">
-      <n-button size="tiny" tertiary :disabled="rec.loading.value" @click="rec.researchFromIntent()">
-        用编辑后的条件重搜
-      </n-button>
-    </div>
-
     <div v-if="rec.lastError.value && !rec.loading.value" class="retry-bar">
       <n-text depth="3" style="font-size: 12px">上一步失败</n-text>
       <n-button size="tiny" type="primary" tertiary @click="rec.retry()">重试</n-button>
     </div>
 
     <footer class="composer">
-      <n-input
-        v-model:value="seeds"
-        size="small"
-        placeholder="可选：种子歌手/歌曲（用逗号分隔）"
-        style="margin-bottom: 8px"
-      />
+      <!-- Seeds only matter on the first turn; collapsed by default, hidden once a
+           result exists (refine ignores them). -->
+      <template v-if="!playlist.hasResult">
+        <button v-if="!showSeeds" type="button" class="seeds-toggle" @click="showSeeds = true">
+          ＋ 种子歌手/歌曲（可选）
+        </button>
+        <n-input
+          v-else
+          v-model:value="seeds"
+          size="small"
+          placeholder="种子歌手/歌曲（用逗号分隔）"
+          style="margin-bottom: 8px"
+        />
+      </template>
       <n-input
         v-model:value="input"
         type="textarea"
@@ -309,9 +324,33 @@ function onKeydown(e: KeyboardEvent) {
   gap: 8px;
   color: #888;
 }
+.conditions {
+  flex: 0 0 auto;
+}
+/* Cap the chip area so a long condition list scrolls internally instead of
+   pushing the transcript off-screen. */
+.chips-scroll {
+  max-height: 112px;
+  overflow-y: auto;
+}
 .intent-actions {
   display: flex;
   justify-content: flex-end;
+  margin-top: 6px;
+}
+.seeds-toggle {
+  display: block;
+  font: inherit;
+  font-size: 12px;
+  color: #9a9a9a;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  margin-bottom: 6px;
+}
+.seeds-toggle:hover {
+  color: var(--brand);
 }
 .retry-bar {
   display: flex;

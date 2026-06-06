@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { NConfigProvider, NButton, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import AppleConnect from '@/components/AppleConnect.vue'
@@ -17,6 +17,16 @@ const playlist = usePlaylistStore()
 // for tabs (对话 / 歌单) — never two panes squeezed on mobile.
 const isNarrow = useMediaQuery('(max-width: 900px)')
 const activeTab = ref<'chat' | 'list'>('chat')
+
+// On narrow screens the result lands in the (unfocused) 歌单 tab — surface it the
+// first time candidates appear so the user doesn't think nothing happened. Only on
+// the false→true transition; later refines feed back via the chat bubble.
+watch(
+  () => playlist.hasResult,
+  (has, prev) => {
+    if (has && !prev && isNarrow.value) activeTab.value = 'list'
+  },
+)
 
 const showConfig = ref(false)
 
@@ -128,7 +138,10 @@ const themeOverrides: GlobalThemeOverrides = {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(420px, 1.1fr);
+  /* The list (right) is where the work happens — previewing, selecting, creating.
+     Give it ~65% and keep the command pane (left) just wide enough for the composer,
+     instead of an even split that over-weights the mostly-idle chat side. */
+  grid-template-columns: minmax(320px, 0.7fr) minmax(440px, 1.3fr);
   gap: 16px;
   padding: 16px;
 }

@@ -22,6 +22,9 @@ export const usePlaylistStore = defineStore('playlist', () => {
   const description = ref('')
   const notice = ref('') // F10 dropped-selection notice
   const droppedItems = ref<PlaylistItem[]>([]) // F10: selected songs dropped this round, awaiting keep/discard
+  // Mobile swipe-left delete: the single most-recently removed item, stashed for a
+  // one-tap undo. Invalidated by the next round (applyRank) or reset.
+  const lastRemoved = ref<{ item: PlaylistItem; index: number; wasSelected: boolean } | null>(null)
 
   const hasResult = computed(() => items.value.length > 0)
 
@@ -74,6 +77,44 @@ export const usePlaylistStore = defineStore('playlist', () => {
     notice.value = droppedItems.value.length
       ? `有 ${droppedItems.value.length} 首已勾选的歌曲不在本轮推荐中。`
       : ''
+    lastRemoved.value = null // a new round invalidates a pending swipe-delete undo
+  }
+
+  /** Mobile swipe-left delete: drop a candidate from the list, pool and selection,
+   *  stashing it (with its position) so the action can be undone in one tap. */
+  function removeItem(id: string) {
+    const index = items.value.findIndex((it) => it.song.id === id)
+    if (index < 0) return
+    const item = items.value[index]
+    const wasSelected = selected.value.has(id)
+    items.value = items.value.filter((it) => it.song.id !== id)
+    if (wasSelected) {
+      const s = new Set(selected.value)
+      s.delete(id)
+      selected.value = s
+    }
+    pool.value.delete(id) // so a later rerank can't resurface a deleted song
+    lastRemoved.value = { item, index, wasSelected }
+  }
+
+  /** Undo the last swipe-delete: restore it to its original position, pool and selection. */
+  function undoRemove() {
+    const last = lastRemoved.value
+    if (!last) return
+    pool.value.set(last.item.song.id, last.item.song)
+    const next = [...items.value]
+    next.splice(Math.min(last.index, next.length), 0, last.item)
+    items.value = next
+    if (last.wasSelected) {
+      const s = new Set(selected.value)
+      s.add(last.item.song.id)
+      selected.value = s
+    }
+    lastRemoved.value = null
+  }
+
+  function clearRemoved() {
+    lastRemoved.value = null
   }
 
   /** Keep the dropped selections: append them back (as kept) and re-select. */
@@ -116,6 +157,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
     description.value = ''
     notice.value = ''
     droppedItems.value = []
+    lastRemoved.value = null
   }
 
   return {
@@ -125,6 +167,7 @@ export const usePlaylistStore = defineStore('playlist', () => {
     description,
     notice,
     droppedItems,
+    lastRemoved,
     hasResult,
     candidatesForRank,
     selectedSongs,
@@ -135,6 +178,9 @@ export const usePlaylistStore = defineStore('playlist', () => {
     toggle,
     selectAll,
     clearSelection,
+    removeItem,
+    undoRemove,
+    clearRemoved,
     dismissNotice,
     reset,
   }
