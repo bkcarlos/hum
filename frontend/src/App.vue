@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { NConfigProvider, NButton, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import AppleConnect from '@/components/AppleConnect.vue'
@@ -8,10 +8,25 @@ import ConversationPane from '@/components/ConversationPane.vue'
 import PlaylistPane from '@/components/PlaylistPane.vue'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useLlmConfigStore } from '@/stores/llmConfig'
+import { useSessionStore } from '@/stores/session'
 import { usePlaylistStore } from '@/stores/playlist'
 
 const llm = useLlmConfigStore()
+const session = useSessionStore()
 const playlist = usePlaylistStore()
+
+// Topbar access button reflects the active mode: free tier needs a sign-in, BYOK
+// needs a configured key. Either way the button opens the same 接入设置 dialog.
+const accessReady = computed(() => (session.mode === 'free' ? session.signedIn : llm.configured))
+const accessLabel = computed(() =>
+  session.mode === 'free'
+    ? session.signedIn
+      ? '免费额度'
+      : '登录用免费额度'
+    : llm.configured
+      ? 'LLM 设置'
+      : '配置 LLM Key',
+)
 
 // Responsive degradation (must-do): narrow screens drop the side-by-side layout
 // for tabs (对话 / 歌单) — never two panes squeezed on mobile.
@@ -53,12 +68,8 @@ const themeOverrides: GlobalThemeOverrides = {
         </div>
         <div class="actions">
           <AppleConnect />
-          <n-button
-            :type="llm.configured ? 'default' : 'primary'"
-            size="small"
-            @click="showConfig = true"
-          >
-            {{ llm.configured ? 'LLM 设置' : '配置 LLM Key' }}
+          <n-button :type="accessReady ? 'default' : 'primary'" size="small" @click="showConfig = true">
+            {{ accessLabel }}
           </n-button>
         </div>
       </header>

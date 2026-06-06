@@ -35,6 +35,16 @@ function keyHeader(apiKey: string) {
   return { headers: { 'X-LLM-Api-Key': apiKey } }
 }
 
+/** Auth for the metered endpoints (suggest/rank): either the user's BYOK key
+ *  (unlimited) or a free-tier Sign in with Apple session (quota'd). */
+export type LlmAuth = { apiKey: string } | { session: string }
+
+function authConfig(auth: LlmAuth) {
+  return 'session' in auth
+    ? { headers: { Authorization: `Bearer ${auth.session}` } }
+    : { headers: { 'X-LLM-Api-Key': auth.apiKey } }
+}
+
 // ── BYOK / LLM ────────────────────────────────────────────────────────
 export function testLlm(llm: LlmBody, apiKey: string): Promise<{ ok: boolean }> {
   return http.post('/llm/test', { llm }, keyHeader(apiKey))
@@ -55,12 +65,12 @@ export function parseIntent(llm: LlmBody, apiKey: string, text: string, seedArti
  *  each against the user's storefront so only tracks that exist reach us. */
 export function suggest(
   llm: LlmBody,
-  apiKey: string,
+  auth: LlmAuth,
   storefront: string,
   text: string,
   seedArtists: string[],
 ): Promise<SuggestResult> {
-  return http.post('/suggest', { llm, storefront, text, seedArtists }, keyHeader(apiKey))
+  return http.post('/suggest', { llm, storefront, text, seedArtists }, authConfig(auth))
 }
 
 /** Generate personalized empty-state example prompts ("千人千面") from local
@@ -77,12 +87,12 @@ export function genExamples(
 
 export function rankSongs(
   llm: LlmBody,
-  apiKey: string,
+  auth: LlmAuth,
   intent: Intent,
   candidates: Candidate[],
   instruction = '',
 ): Promise<RankResult> {
-  return http.post('/rank', { llm, intent, candidates, instruction }, keyHeader(apiKey))
+  return http.post('/rank', { llm, intent, candidates, instruction }, authConfig(auth))
 }
 
 // ── Apple Music ───────────────────────────────────────────────────────
@@ -119,6 +129,12 @@ export function getAppleWebConfig(): Promise<{
  *  session token. Same endpoint the iOS app uses. */
 export function exchangeAppleToken(identityToken: string): Promise<{ session: string; expiresInSeconds: number }> {
   return http.post('/auth/apple', { identityToken })
+}
+
+/** The signed-in user's Apple sub (+ admin flag) for any valid session — used to
+ *  show the account in the free-tier UI. */
+export function getMe(session: string): Promise<{ sub: string; isAdmin: boolean }> {
+  return http.get('/auth/me', { headers: { Authorization: `Bearer ${session}` } })
 }
 
 // ── Free-tier admin (Sign in with Apple session; C2/C3/C4) ────────────

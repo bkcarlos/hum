@@ -1,9 +1,25 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NModal, NCard, NForm, NFormItem, NSelect, NInput, NInputGroup, NButton, NSpace, NAlert, NText } from 'naive-ui'
+import { computed, onMounted, ref } from 'vue'
+import {
+  NModal,
+  NCard,
+  NForm,
+  NFormItem,
+  NSelect,
+  NInput,
+  NInputGroup,
+  NButton,
+  NSpace,
+  NAlert,
+  NText,
+  NRadioGroup,
+  NRadioButton,
+} from 'naive-ui'
 import { PROVIDER_PRESETS, presetById } from '@/data/providers'
 import { useLlmConfigStore } from '@/stores/llmConfig'
-import { testLlm, listModels } from '@/api/client'
+import { useSessionStore } from '@/stores/session'
+import { testLlm, listModels, getAppleWebConfig, exchangeAppleToken, getMe } from '@/api/client'
+import { appleSignIn, isAppleCancel, type AppleWebConfig } from '@/services/appleSignIn'
 import type { ApiError, ModelInfo } from '@/types'
 
 const props = defineProps<{ show: boolean }>()
@@ -14,12 +30,37 @@ const visible = computed({
 })
 
 const llm = useLlmConfigStore()
+const session = useSessionStore()
 
+// ── Free tier (Sign in with Apple) ────────────────────────────────────
+const webCfg = ref<AppleWebConfig | null>(null)
+const appleLoading = ref(false)
+const freeErr = ref('')
+
+async function onAppleLogin() {
+  if (!webCfg.value || appleLoading.value) return
+  appleLoading.value = true
+  freeErr.value = ''
+  try {
+    const idToken = await appleSignIn(webCfg.value)
+    const { session: tok } = await exchangeAppleToken(idToken)
+    let sub = ''
+    try {
+      sub = (await getMe(tok)).sub
+    } catch {
+      /* sub is just for display */
+    }
+    session.setSession(tok, sub)
+  } catch (e) {
+    if (!isAppleCancel(e)) freeErr.value = (e as ApiError).message || (e as Error).message || 'Apple 登录失败，请重试。'
+  } finally {
+    appleLoading.value = false
+  }
+}
+
+// ── BYOK ──────────────────────────────────────────────────────────────
 const presetOptions = PROVIDER_PRESETS.map((p) => ({ label: p.label, value: p.id }))
 
-// Models fetched live from the provider (/llm/models), merged with the static
-// preset list. The select stays free-form (tag) so unlisted models — and
-// gateways without a list endpoint — still work via manual entry.
 const fetchedModels = ref<ModelInfo[]>([])
 const modelOptions = computed(() => {
   const seen = new Set<string>()
@@ -48,26 +89,22 @@ const loadingModels = ref(false)
 const modelsOk = ref<boolean | null>(null)
 const modelsMsg = ref('')
 
-// Listing only needs a key + Base URL (not a model yet).
 const canFetch = computed(() => llm.apiKey.trim() !== '' && llm.baseUrl.trim() !== '')
 
 function resetTest() {
   testOk.value = null
   testMsg.value = ''
 }
-
 function resetModels() {
   fetchedModels.value = []
   modelsOk.value = null
   modelsMsg.value = ''
 }
-
 function onPreset(id: string) {
   llm.applyPreset(id)
   resetTest()
   resetModels()
 }
-
 function onBaseUrlChange() {
   resetTest()
   resetModels()
@@ -115,66 +152,123 @@ function onClear() {
   resetTest()
   resetModels()
 }
+
+onMounted(async () => {
+  try {
+    const cfg = await getAppleWebConfig()
+    if (cfg.enabled && cfg.clientId) {
+      webCfg.value = { clientId: cfg.clientId, redirectUri: cfg.redirectUri ?? '', scope: cfg.scope ?? '' }
+    }
+  } catch {
+    /* web Apple login unavailable → free tier shows a fallback note */
+  }
+})
 </script>
 
 <template>
   <n-modal v-model:show="visible">
-    <n-card style="width: 560px; max-width: 92vw" title="LLM 设置（自带 Key · BYOK）" :bordered="false" role="dialog">
-      <n-form label-placement="top" size="medium">
-        <n-form-item label="Provider">
-          <n-select :value="llm.presetId" :options="presetOptions" @update:value="onPreset" />
-        </n-form-item>
+    <n-card style="width: 560px; max-width: 92vw" title="接入设置" :bordered="false" role="dialog">
+      <n-radio-group :value="session.mode" style="margin-bottom: 18px" @update:value="session.setMode($event)">
+        <n-radio-button value="free">免费额度（Apple 登录）</n-radio-button>
+        <n-radio-button value="byok">自带 Key（BYOK）</n-radio-button>
+      </n-radio-group>
 
-        <n-form-item label="API Key">
-          <n-input
-            v-model:value="llm.apiKey"
-            type="password"
-            show-password-on="click"
-            placeholder="粘贴你的 API Key"
-            @update:value="resetTest"
-          />
-        </n-form-item>
-
-        <n-form-item label="Base URL">
-          <n-input v-model:value="llm.baseUrl" placeholder="https://…" @update:value="onBaseUrlChange" />
-        </n-form-item>
-
-        <n-form-item label="模型">
-          <n-space vertical :size="4" style="width: 100%">
-            <n-input-group>
-              <n-select
-                v-model:value="llm.model"
-                filterable
-                tag
-                placeholder="选择或输入模型名"
-                :options="modelOptions"
-                @update:value="resetTest"
-              />
-              <n-button :loading="loadingModels" :disabled="!canFetch" @click="onFetchModels">拉取模型</n-button>
-            </n-input-group>
-            <n-text v-if="modelsMsg" :type="modelsOk ? 'success' : 'error'" style="font-size: 12px">
-              {{ modelsMsg }}
+      <!-- FREE TIER -->
+      <div v-if="session.mode === 'free'">
+        <div v-if="session.signedIn" class="signed-in">
+          <n-space vertical :size="10">
+            <n-text>已登录：<b>{{ session.sub || 'Apple 账号' }}</b></n-text>
+            <n-text depth="3" style="font-size: 12px">
+              正在使用免费额度（服务端共享 Key，按每日配额）。额度用尽会提示你改用自带 Key。
             </n-text>
+            <div><n-button size="small" @click="session.signOut()">退出登录</n-button></div>
           </n-space>
-        </n-form-item>
-      </n-form>
+        </div>
+        <div v-else>
+          <button v-if="webCfg" class="apple-btn" :disabled="appleLoading" @click="onAppleLogin">
+            <svg class="apple-logo" viewBox="0 0 384 512" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"
+              />
+            </svg>
+            <span>{{ appleLoading ? '登录中…' : '通过 Apple 登录' }}</span>
+          </button>
+          <n-alert v-else type="info" :bordered="false">
+            网页版 Apple 登录暂未开放，请切到「自带 Key」使用自己的 LLM Key。
+          </n-alert>
+          <n-text depth="3" style="font-size: 12px; display: block; margin-top: 12px">
+            用 Apple 登录即可使用免费额度，无需自备 LLM Key。每天有使用上限；超出后可随时切到自带 Key。
+          </n-text>
+          <n-alert v-if="freeErr" type="error" style="margin-top: 12px">{{ freeErr }}</n-alert>
+        </div>
+      </div>
 
-      <n-alert v-if="testOk !== null" :type="testOk ? 'success' : 'error'" style="margin-bottom: 12px">
-        {{ testMsg }}
-      </n-alert>
+      <!-- BYOK -->
+      <div v-else>
+        <n-form label-placement="top" size="medium">
+          <n-form-item label="Provider">
+            <n-select :value="llm.presetId" :options="presetOptions" @update:value="onPreset" />
+          </n-form-item>
 
-      <n-alert type="info" :bordered="false" style="margin-bottom: 16px">
-        <n-text depth="3" style="font-size: 12px">
-          你的 API Key 仅保存在本浏览器，调用时随请求转发给后端用于本次 LLM 调用，调用结束即丢弃；我们不在服务器保存、不记录到日志。请勿在公共设备上保存。
-        </n-text>
-      </n-alert>
+          <n-form-item label="API Key">
+            <n-input
+              v-model:value="llm.apiKey"
+              type="password"
+              show-password-on="click"
+              placeholder="粘贴你的 API Key"
+              @update:value="resetTest"
+            />
+          </n-form-item>
+
+          <n-form-item label="Base URL">
+            <n-input v-model:value="llm.baseUrl" placeholder="https://…" @update:value="onBaseUrlChange" />
+          </n-form-item>
+
+          <n-form-item label="模型">
+            <n-space vertical :size="4" style="width: 100%">
+              <n-input-group>
+                <n-select
+                  v-model:value="llm.model"
+                  filterable
+                  tag
+                  placeholder="选择或输入模型名"
+                  :options="modelOptions"
+                  @update:value="resetTest"
+                />
+                <n-button :loading="loadingModels" :disabled="!canFetch" @click="onFetchModels">拉取模型</n-button>
+              </n-input-group>
+              <n-text v-if="modelsMsg" :type="modelsOk ? 'success' : 'error'" style="font-size: 12px">
+                {{ modelsMsg }}
+              </n-text>
+            </n-space>
+          </n-form-item>
+        </n-form>
+
+        <n-alert v-if="testOk !== null" :type="testOk ? 'success' : 'error'" style="margin-bottom: 12px">
+          {{ testMsg }}
+        </n-alert>
+
+        <n-alert type="info" :bordered="false" style="margin-bottom: 4px">
+          <n-text depth="3" style="font-size: 12px">
+            你的 API Key 仅保存在本浏览器，调用时随请求转发给后端用于本次 LLM 调用，调用结束即丢弃；我们不在服务器保存、不记录到日志。请勿在公共设备上保存。
+          </n-text>
+        </n-alert>
+      </div>
 
       <template #footer>
         <n-space justify="space-between">
-          <n-button quaternary type="error" @click="onClear">清除本地配置</n-button>
+          <n-button v-if="session.mode === 'byok'" quaternary type="error" @click="onClear">清除本地配置</n-button>
+          <span v-else />
           <n-space>
             <n-button @click="visible = false">关闭</n-button>
-            <n-button type="primary" :loading="testing" :disabled="!llm.configured" @click="onTest">
+            <n-button
+              v-if="session.mode === 'byok'"
+              type="primary"
+              :loading="testing"
+              :disabled="!llm.configured"
+              @click="onTest"
+            >
               测试连接
             </n-button>
           </n-space>
@@ -183,3 +277,33 @@ function onClear() {
     </n-card>
   </n-modal>
 </template>
+
+<style scoped>
+.apple-btn {
+  width: 100%;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.apple-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.apple-logo {
+  width: 16px;
+  height: 16px;
+  margin-top: -2px;
+}
+.signed-in {
+  padding: 4px 2px;
+}
+</style>

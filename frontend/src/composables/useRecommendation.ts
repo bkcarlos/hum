@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import * as api from '@/api/client'
 import { useLlmConfigStore } from '@/stores/llmConfig'
+import { useSessionStore } from '@/stores/session'
 import { useAppleStore } from '@/stores/apple'
 import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
@@ -22,6 +23,7 @@ type LastAction =
 // ConversationPane is the single consumer, so the local reactive state is a unit.
 export function useRecommendation() {
   const llm = useLlmConfigStore()
+  const session = useSessionStore()
   const apple = useAppleStore()
   const convo = useConversationStore()
   const playlist = usePlaylistStore()
@@ -31,8 +33,22 @@ export function useRecommendation() {
   const lastError = ref('')
   let lastAction: LastAction | null = null
 
+  // The auth for suggest/rank: a free-tier Sign in with Apple session, or the
+  // user's BYOK key — whichever mode is active. null ⇒ not ready (precondition
+  // surfaces why).
+  function effectiveAuth(): api.LlmAuth | null {
+    if (session.mode === 'free') {
+      return session.signedIn ? { session: session.session } : null
+    }
+    return llm.configured ? { apiKey: llm.apiKey } : null
+  }
+
   function precondition(): string | null {
-    if (!llm.configured) return '请先在右上角「LLM 设置」里配置并测试你的 API Key（F0）。'
+    if (session.mode === 'free') {
+      if (!session.signedIn) return '请先用 Apple 登录以使用免费额度（右上角「接入设置」），或切换到自带 Key。'
+    } else if (!llm.configured) {
+      return '请先在右上角「接入设置」配置并测试你的 API Key（F0），或改用免费额度。'
+    }
     if (!apple.authorized || !apple.storefront) return '请先点击「连接 Apple Music」完成授权（F1）。'
     return null
   }
@@ -51,13 +67,15 @@ export function useRecommendation() {
       convo.addAssistant(blocked)
       return
     }
+    const auth = effectiveAuth()
+    if (!auth) return
     loading.value = true
     lastError.value = ''
     try {
       stage.value = 'AI 选歌…'
       const { intent, candidates, suggested, resolved, unresolved } = await api.suggest(
         llm.body,
-        llm.apiKey,
+        auth,
         apple.storefront,
         text,
         seeds,
@@ -66,7 +84,7 @@ export function useRecommendation() {
       recordTastes([...intent.genres, ...intent.moods, ...intent.keywords]) // local taste history (千人千面)
 
       stage.value = '智能排序…'
-      const rank = await api.rankSongs(llm.body, llm.apiKey, intent, toCandidates(candidates))
+      const rank = await api.rankSongs(llm.body, auth, intent, toCandidates(candidates))
       playlist.setRecommendation(candidates, rank)
 
       const miss = unresolved.length ? `（AI 建议 ${suggested} 首，在 Apple Music 命中 ${resolved} 首）` : ''
@@ -88,11 +106,13 @@ export function useRecommendation() {
       convo.addAssistant(blocked)
       return
     }
+    const auth = effectiveAuth()
+    if (!auth) return
     loading.value = true
     lastError.value = ''
     try {
       stage.value = '重新挑选…'
-      const rank = await api.rankSongs(llm.body, llm.apiKey, convo.intent, playlist.candidatesForRank, instruction)
+      const rank = await api.rankSongs(llm.body, auth, convo.intent, playlist.candidatesForRank, instruction)
       playlist.applyRefinement(rank)
       const tail = playlist.notice ? ` ${playlist.notice}` : ''
       convo.addAssistant(`已按「${instruction}」重新挑选：「${rank.playlist_name}」。${tail}`)
@@ -117,20 +137,22 @@ export function useRecommendation() {
       convo.addAssistant('还没有可用的检索条件，请先描述一下。')
       return
     }
+    const auth = effectiveAuth()
+    if (!auth) return
     loading.value = true
     lastError.value = ''
     try {
       stage.value = 'AI 选歌…'
       const { candidates } = await api.suggest(
         llm.body,
-        llm.apiKey,
+        auth,
         apple.storefront,
         intentToText(convo.intent),
         convo.intent.seed_artists,
       )
 
       stage.value = '智能排序…'
-      const rank = await api.rankSongs(llm.body, llm.apiKey, convo.intent, toCandidates(candidates))
+      const rank = await api.rankSongs(llm.body, auth, convo.intent, toCandidates(candidates))
       playlist.applyRefinement(rank, candidates) // replace pool, keep selected
 
       const tail = playlist.notice ? ` ${playlist.notice}` : ''

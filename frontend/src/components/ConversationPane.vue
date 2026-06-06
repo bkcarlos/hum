@@ -6,13 +6,19 @@ import * as api from '@/api/client'
 import { useConversationStore } from '@/stores/conversation'
 import { usePlaylistStore } from '@/stores/playlist'
 import { useLlmConfigStore } from '@/stores/llmConfig'
+import { useSessionStore } from '@/stores/session'
 import { useRecommendation } from '@/composables/useRecommendation'
 import { nowContext, pickExamples, topTastes } from '@/data/personalize'
 
 const convo = useConversationStore()
 const playlist = usePlaylistStore()
 const llm = useLlmConfigStore()
+const session = useSessionStore()
 const rec = useRecommendation()
+
+// LLM-generated examples only make sense with a BYOK key (the /examples endpoint
+// is BYOK-only); free-tier users get the local pool. So gate generation on that.
+const canGenExamples = () => session.mode === 'byok' && llm.configured
 
 const input = ref('')
 const seeds = ref('')
@@ -46,7 +52,7 @@ const SESSION_KEY = 'hum.examples.session'
 // to a random draw from the static pool. Cached per browser session so we don't
 // re-call on every reload; "换一批" forces a fresh generation.
 async function refreshExamples(force = false) {
-  if (!llm.configured) {
+  if (!canGenExamples()) {
     examples.value = pickExamples(EXAMPLE_POOL, 4)
     return
   }
@@ -75,7 +81,7 @@ async function refreshExamples(force = false) {
   }
 }
 function shuffleExamples() {
-  if (llm.configured) refreshExamples(true)
+  if (canGenExamples()) refreshExamples(true)
   else examples.value = pickExamples(EXAMPLE_POOL, 4)
 }
 function useExample(t: string) {
