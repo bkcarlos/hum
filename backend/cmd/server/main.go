@@ -92,7 +92,7 @@ func main() {
 			store = quota.NewMemoryStore(seed)
 			slog.Warn("free tier: using in-memory quota (single-instance; set FIRESTORE_PROJECT for prod)")
 		}
-		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleBundleID, cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
+		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleAudiences(), cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
 		freeTierOn = true
 		slog.Info("free tier enabled", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal, "seededAdmins", len(cfg.AdminAppleSubs))
 	} else {
@@ -133,7 +133,8 @@ func main() {
 		// Free tier: exchange a Sign in with Apple identity token for a session.
 		if freeTierOn {
 			api.POST("/auth/apple", h.AppleAuth)
-			api.GET("/auth/me", h.Me) // who am I (+ isAdmin) — bootstrap + UI nav
+			api.GET("/auth/apple/web", h.AppleWebConfig) // web Apple-JS login config (public)
+			api.GET("/auth/me", h.Me)                    // who am I (+ isAdmin) — bootstrap + UI nav
 
 			// Admin API (C3+) sits behind the Apple-sub allowlist in the live
 			// config. AdminOnly verifies the Bearer session's sub ∈ Admins.

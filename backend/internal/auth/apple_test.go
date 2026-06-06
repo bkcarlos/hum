@@ -26,8 +26,8 @@ func signAppleToken(t *testing.T, key *rsa.PrivateKey, claims jwt.RegisteredClai
 func testVerifier(t *testing.T, key *rsa.PrivateKey, now time.Time) *AppleVerifier {
 	t.Helper()
 	return &AppleVerifier{
-		BundleID: "com.carlosbk.hum",
-		Now:      func() time.Time { return now },
+		Audiences: []string{"com.carlosbk.hum"},
+		Now:       func() time.Time { return now },
 		KeyFunc: func(tok *jwt.Token) (any, error) {
 			if kid, _ := tok.Header["kid"].(string); kid != "testkid" {
 				return nil, jwt.ErrTokenUnverifiable
@@ -70,6 +70,31 @@ func TestApple_WrongAudience(t *testing.T) {
 	c.Audience = jwt.ClaimStrings{"com.someone.else"}
 	if _, err := v.Verify(signAppleToken(t, key, c)); err == nil {
 		t.Fatal("expected wrong-audience token to be rejected")
+	}
+}
+
+func TestApple_MultiAudienceAcceptsWebServicesID(t *testing.T) {
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	now := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	v := testVerifier(t, key, now)
+	// Accept both the iOS bundle id and the web Services ID (OR-match).
+	v.Audiences = []string{"com.carlosbk.hum", "com.carlosbk.hum.web"}
+
+	// A web token (aud = Services ID) is accepted and yields the same sub shape.
+	c := validClaims(now)
+	c.Audience = jwt.ClaimStrings{"com.carlosbk.hum.web"}
+	if sub, err := v.Verify(signAppleToken(t, key, c)); err != nil || sub != "001234.abcdef.5678" {
+		t.Fatalf("web aud: sub=%q err=%v", sub, err)
+	}
+	// The iOS token (aud = bundle id) still works.
+	if _, err := v.Verify(signAppleToken(t, key, validClaims(now))); err != nil {
+		t.Fatalf("ios aud: %v", err)
+	}
+	// An aud in neither set is still rejected.
+	c2 := validClaims(now)
+	c2.Audience = jwt.ClaimStrings{"com.someone.else"}
+	if _, err := v.Verify(signAppleToken(t, key, c2)); err == nil {
+		t.Fatal("expected an unlisted audience to be rejected")
 	}
 }
 

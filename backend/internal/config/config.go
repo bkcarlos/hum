@@ -59,6 +59,14 @@ type Config struct {
 	SessionSecret      string // HMAC secret for our session JWTs
 	AppleBundleID      string // expected `aud` of Apple identity tokens (iOS bundle id)
 
+	// Web Sign in with Apple (optional). AppleWebClientID is the Services ID used
+	// by the browser Apple-JS flow — a different `aud` than the iOS bundle id, but
+	// the same per-user `sub` within one Apple Developer team. When set, it is
+	// added to the accepted audiences and the web Apple login button is offered.
+	// AppleWebRedirectURI must match a Return URL registered on the Services ID.
+	AppleWebClientID    string
+	AppleWebRedirectURI string
+
 	// Bootstrap free-tier policy — seeds the quota store / Firestore config doc.
 	// After boot the live values come from the store (changeable without restart).
 	FreeTierEnabled bool
@@ -98,17 +106,19 @@ func Load() (*Config, error) {
 		RateLimitRPS:        envInt("RATE_LIMIT_RPS", 10),
 		RateLimitBurst:      envInt("RATE_LIMIT_BURST", 30),
 
-		DefaultLLMKey:      os.Getenv("DEFAULT_LLM_API_KEY"),
-		DefaultLLMProvider: envStr("DEFAULT_LLM_PROVIDER", "openai-compat"),
-		DefaultLLMBaseURL:  os.Getenv("DEFAULT_LLM_BASE_URL"),
-		DefaultLLMModel:    os.Getenv("DEFAULT_LLM_MODEL"),
-		SessionSecret:      os.Getenv("SESSION_SECRET"),
-		AppleBundleID:      os.Getenv("APPLE_BUNDLE_ID"),
-		FreeTierEnabled:    envBool("FREE_TIER_ENABLED", true),
-		FreeTierPerUser:    envInt("FREE_TIER_PER_USER_DAILY", 20),
-		FreeTierGlobal:     envInt("FREE_TIER_GLOBAL_DAILY", 0),
-		FirestoreProject:   os.Getenv("FIRESTORE_PROJECT"),
-		AdminAppleSubs:     splitCSV(os.Getenv("ADMIN_APPLE_SUBS")),
+		DefaultLLMKey:       os.Getenv("DEFAULT_LLM_API_KEY"),
+		DefaultLLMProvider:  envStr("DEFAULT_LLM_PROVIDER", "openai-compat"),
+		DefaultLLMBaseURL:   os.Getenv("DEFAULT_LLM_BASE_URL"),
+		DefaultLLMModel:     os.Getenv("DEFAULT_LLM_MODEL"),
+		SessionSecret:       os.Getenv("SESSION_SECRET"),
+		AppleBundleID:       os.Getenv("APPLE_BUNDLE_ID"),
+		AppleWebClientID:    os.Getenv("APPLE_WEB_CLIENT_ID"),
+		AppleWebRedirectURI: os.Getenv("APPLE_WEB_REDIRECT_URI"),
+		FreeTierEnabled:     envBool("FREE_TIER_ENABLED", true),
+		FreeTierPerUser:     envInt("FREE_TIER_PER_USER_DAILY", 20),
+		FreeTierGlobal:      envInt("FREE_TIER_GLOBAL_DAILY", 0),
+		FirestoreProject:    os.Getenv("FIRESTORE_PROJECT"),
+		AdminAppleSubs:      splitCSV(os.Getenv("ADMIN_APPLE_SUBS")),
 	}
 	return cfg, nil
 }
@@ -119,6 +129,26 @@ func Load() (*Config, error) {
 func (c *Config) FreeTierConfigured() bool {
 	return c.DefaultLLMKey != "" && c.DefaultLLMModel != "" &&
 		c.SessionSecret != "" && c.AppleBundleID != ""
+}
+
+// AppleAudiences is the set of accepted Apple identity-token `aud` values: the
+// iOS bundle id plus, when configured, the web Services ID (Sign in with Apple JS).
+func (c *Config) AppleAudiences() []string {
+	auds := []string{}
+	if c.AppleBundleID != "" {
+		auds = append(auds, c.AppleBundleID)
+	}
+	if c.AppleWebClientID != "" {
+		auds = append(auds, c.AppleWebClientID)
+	}
+	return auds
+}
+
+// AppleWebConfigured reports whether the browser Sign in with Apple flow is set
+// up (a Services ID is present). The free tier itself can still run iOS-only
+// without this.
+func (c *Config) AppleWebConfigured() bool {
+	return c.AppleWebClientID != ""
 }
 
 // AppleConfigured reports whether the Apple Developer Token can be minted.

@@ -58,9 +58,9 @@ func freeHandlers(upstreamURL string, perUser int, fake *fakeApple) (*Handlers, 
 	store := quota.NewMemoryStore(seed)
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	verifier := &auth.AppleVerifier{
-		BundleID: "com.test",
-		Now:      func() time.Time { return time.Now() },
-		KeyFunc:  func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+		Audiences: []string{"com.test"},
+		Now:       func() time.Time { return time.Now() },
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
 	}
 	secret := []byte("sess-secret")
 	h := New(cfg, nil, fake).WithFreeTier(store, verifier, secret)
@@ -149,9 +149,9 @@ func TestFreeTier_AppleAuthIssuesSession(t *testing.T) {
 	cfg := &config.Config{UpstreamHTTPTimeout: 5 * time.Second, DefaultLLMKey: "server-key"}
 	store := quota.NewMemoryStore(quota.Config{Enabled: true, PerUserDailyLimit: 5, LLMProvider: "openai-compat", LLMBaseURL: "http://x", LLMModel: "m"})
 	verifier := &auth.AppleVerifier{
-		BundleID: "com.test",
-		Now:      func() time.Time { return now },
-		KeyFunc:  func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+		Audiences: []string{"com.test"},
+		Now:       func() time.Time { return now },
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
 	}
 	h := New(cfg, nil, nil).WithFreeTier(store, verifier, secret)
 	r := freeRouter(h)
@@ -189,5 +189,42 @@ func TestFreeTier_AppleAuthIssuesSession(t *testing.T) {
 	w = do(r, http.MethodPost, "/api/auth/apple", nil, map[string]any{"identityToken": "not-a-jwt"})
 	if w.Code != http.StatusUnauthorized || errCode(w) != "apple_auth_failed" {
 		t.Fatalf("bad token: want 401 apple_auth_failed, got %d %s", w.Code, errCode(w))
+	}
+}
+
+func TestAppleWebConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	webRouter := func(h *Handlers) *gin.Engine {
+		r := gin.New()
+		r.GET("/api/auth/apple/web", h.AppleWebConfig)
+		return r
+	}
+
+	// No Services ID → enabled:false (web falls back to pasting a token).
+	off := webRouter(New(&config.Config{}, nil, nil))
+	w := do(off, http.MethodGet, "/api/auth/apple/web", nil, nil)
+	var offBody struct {
+		Data struct {
+			Enabled bool `json:"enabled"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &offBody)
+	if w.Code != http.StatusOK || offBody.Data.Enabled {
+		t.Fatalf("off: code=%d enabled=%v", w.Code, offBody.Data.Enabled)
+	}
+
+	// With a Services ID → enabled + clientId + redirectUri (all non-secret).
+	on := webRouter(New(&config.Config{AppleWebClientID: "com.test.web", AppleWebRedirectURI: "https://x/admin"}, nil, nil))
+	w = do(on, http.MethodGet, "/api/auth/apple/web", nil, nil)
+	var onBody struct {
+		Data struct {
+			Enabled     bool   `json:"enabled"`
+			ClientID    string `json:"clientId"`
+			RedirectURI string `json:"redirectUri"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(w.Body.Bytes(), &onBody)
+	if w.Code != http.StatusOK || !onBody.Data.Enabled || onBody.Data.ClientID != "com.test.web" || onBody.Data.RedirectURI != "https://x/admin" {
+		t.Fatalf("on: %+v", onBody.Data)
 	}
 }

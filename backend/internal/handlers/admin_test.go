@@ -30,9 +30,9 @@ func adminHandlers(admins ...string) (*Handlers, []byte) {
 	})
 	key, _ := rsa.GenerateKey(rand.Reader, 2048)
 	verifier := &auth.AppleVerifier{
-		BundleID: "com.test",
-		Now:      time.Now,
-		KeyFunc:  func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+		Audiences: []string{"com.test"},
+		Now:       time.Now,
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
 	}
 	secret := []byte("sess-secret")
 	return New(cfg, nil, nil).WithFreeTier(store, verifier, secret), secret

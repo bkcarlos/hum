@@ -49,6 +49,24 @@ func (h *Handlers) AppleAuth(c *gin.Context) {
 	httpx.OK(c, gin.H{"session": tok, "expiresInSeconds": int(sessionTTL.Seconds())})
 }
 
+// AppleWebConfig (GET /api/auth/apple/web) returns the non-secret config the
+// browser Sign in with Apple JS flow needs: the Services ID (clientId), the
+// registered return URL, and scope. enabled=false when no Services ID is set, so
+// the web UI falls back to pasting a session token. Public (no auth) — none of
+// this is secret (the clientId is a public identifier).
+func (h *Handlers) AppleWebConfig(c *gin.Context) {
+	if h.cfg == nil || h.cfg.AppleWebClientID == "" {
+		httpx.OK(c, gin.H{"enabled": false})
+		return
+	}
+	httpx.OK(c, gin.H{
+		"enabled":     true,
+		"clientId":    h.cfg.AppleWebClientID,
+		"redirectUri": h.cfg.AppleWebRedirectURI,
+		"scope":       "",
+	})
+}
+
 // resolveProvider returns an LLM provider for this request plus a refund func.
 //
 //   - BYOK: an X-LLM-Api-Key header → provider from the request body config + that
