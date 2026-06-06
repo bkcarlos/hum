@@ -103,6 +103,24 @@ export function createPlaylist(
   return http.post('/apple/playlists', { name, description, songIds }, { headers: { 'Music-User-Token': userToken } })
 }
 
+// ── Sign in with Apple (web) ──────────────────────────────────────────
+/** Non-secret config for the browser Apple-JS flow. enabled:false ⇒ no Services
+ *  ID configured server-side, so the UI falls back to pasting a session token. */
+export function getAppleWebConfig(): Promise<{
+  enabled: boolean
+  clientId?: string
+  redirectUri?: string
+  scope?: string
+}> {
+  return http.get('/auth/apple/web')
+}
+
+/** Exchange an Apple identity token (from the web Apple-JS popup) for our own
+ *  session token. Same endpoint the iOS app uses. */
+export function exchangeAppleToken(identityToken: string): Promise<{ session: string; expiresInSeconds: number }> {
+  return http.post('/auth/apple', { identityToken })
+}
+
 // ── Free-tier admin (Sign in with Apple session; C2/C3/C4) ────────────
 /** The admin session Bearer (issued by /auth/apple). Like the BYOK key it is a
  *  credential — it lives only in the admin store's localStorage, never elsewhere. */
