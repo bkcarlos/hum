@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { NConfigProvider, NButton, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
-import type { GlobalThemeOverrides } from 'naive-ui'
+import { NConfigProvider, NButton, NDropdown, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
+import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
 import AppleConnect from '@/components/AppleConnect.vue'
 import LlmConfigDialog from '@/components/LlmConfigDialog.vue'
 import ConversationPane from '@/components/ConversationPane.vue'
@@ -67,6 +67,39 @@ function onSecondary() {
   showConfig.value = true
 }
 
+// Once an identity is active (signed in, or BYOK configured), collapse the access
+// controls into one account chip + dropdown (a proper「我的」menu) instead of the
+// button-and-link row.
+const hasIdentity = computed(() => session.signedIn || (session.mode === 'byok' && llm.configured))
+const accountName = computed(() => (session.signedIn ? session.displayName || 'Apple 账号' : '自带 Key'))
+const accountSub = computed(() => (session.signedIn ? '免费额度' : '已配置'))
+const avatarInitial = computed(() => (accountName.value.trim()[0] || '·').toUpperCase())
+const accountMenu = computed<DropdownOption[]>(() =>
+  session.signedIn
+    ? [
+        { label: '接入设置', key: 'settings' },
+        { label: '改用自带 Key', key: 'byok' },
+        { type: 'divider', key: 'd' },
+        { label: '退出登录', key: 'signout' },
+      ]
+    : [
+        { label: '接入设置', key: 'settings' },
+        { label: '改用免费额度', key: 'free' },
+      ],
+)
+function onAccountSelect(key: string) {
+  if (key === 'settings') showConfig.value = true
+  else if (key === 'byok') {
+    session.setMode('byok')
+    showConfig.value = true
+  } else if (key === 'free') {
+    session.setMode('free')
+    showConfig.value = true
+  } else if (key === 'signout') {
+    session.signOut()
+  }
+}
+
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     primaryColor: '#fa2d48',
@@ -90,10 +123,22 @@ const themeOverrides: GlobalThemeOverrides = {
         </div>
         <div class="actions">
           <AppleConnect />
-          <n-button :type="primaryType" size="small" :loading="appleLoading" @click="onPrimary">
-            <span class="acc-label">{{ primaryLabel }}</span>
-          </n-button>
-          <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
+          <n-dropdown v-if="hasIdentity" trigger="click" :options="accountMenu" @select="onAccountSelect">
+            <button type="button" class="account-chip">
+              <span class="avatar">{{ avatarInitial }}</span>
+              <span class="chip-text">
+                <span class="chip-name">{{ accountName }}</span>
+                <span class="chip-sub">{{ accountSub }}</span>
+              </span>
+              <span class="chev">▾</span>
+            </button>
+          </n-dropdown>
+          <template v-else>
+            <n-button :type="primaryType" size="small" :loading="appleLoading" @click="onPrimary">
+              <span class="acc-label">{{ primaryLabel }}</span>
+            </n-button>
+            <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
+          </template>
         </div>
       </header>
 
@@ -182,6 +227,56 @@ const themeOverrides: GlobalThemeOverrides = {
 }
 .alt-link :deep(.n-button__content) {
   color: #8a8a8e;
+}
+/* Account chip (avatar + name + ▾) shown once an identity is active. */
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid #ececec;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+}
+.account-chip:hover {
+  background: #fafafa;
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #fa2d48;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+  max-width: 160px;
+}
+.chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-sub {
+  font-size: 10px;
+  color: #98989d;
+}
+.chev {
+  font-size: 10px;
+  color: #98989d;
 }
 
 .dual {
