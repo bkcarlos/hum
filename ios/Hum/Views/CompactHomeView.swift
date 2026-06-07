@@ -6,7 +6,6 @@ struct CompactHomeView: View {
     @EnvironmentObject private var convo: ConversationStore
     @EnvironmentObject private var playlist: PlaylistStore
     @EnvironmentObject private var preview: PreviewPlayer
-    @EnvironmentObject private var music: MusicAuthStore
     @EnvironmentObject private var reco: RecommendationCoordinator
     @EnvironmentObject private var llm: LLMConfigStore
     @EnvironmentObject private var ui: UIState
@@ -94,10 +93,8 @@ struct CompactHomeView: View {
                     SongRowView(
                         item: item,
                         isSelected: playlist.selected.contains(item.id),
-                        isCurrent: preview.currentId == item.id,
-                        isPlaying: preview.isPlaying,
-                        onToggleSelect: { playlist.toggle(item.id) },
-                        onTogglePlay: { preview.toggle(item.song) }
+                        queue: playlist.orderedSongs,
+                        onToggleSelect: { playlist.toggle(item.id) }
                     )
                     .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -116,6 +113,7 @@ struct CompactHomeView: View {
             }
             .listStyle(.plain)
             .animation(.default, value: playlist.items)
+            .scrollDismissesKeyboard(.interactively)
         } else {
             emptyState
         }
@@ -149,6 +147,7 @@ struct CompactHomeView: View {
             .padding()
         }
         .frame(maxHeight: .infinity)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: 底部：加载/错误 + 结果操作 + 输入
@@ -177,18 +176,9 @@ struct CompactHomeView: View {
                         playlist.allSelected ? playlist.clearSelection() : playlist.selectAll()
                     }
                     .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 16) {
-                        TransportControls()
-                        if music.canPlayFull {
-                            FullPlaybackButton(catalogIDs: playlist.orderedSongs.map { $0.id })
-                        }
-                    }
-
+                    Spacer()
                     Text("已选 \(playlist.selectedCount)")
                         .font(.caption).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 CreatePlaylistButton()
             }

@@ -5,7 +5,6 @@ import SwiftUI
 struct PlaylistView: View {
     @EnvironmentObject private var playlist: PlaylistStore
     @EnvironmentObject private var preview: PreviewPlayer
-    @EnvironmentObject private var music: MusicAuthStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,15 +48,11 @@ struct PlaylistView: View {
             TextField("歌单名", text: $playlist.playlistName)
                 .textFieldStyle(.roundedBorder).font(.subheadline)
             HStack(spacing: 12) {
-                TransportControls()
-                if music.canPlayFull {
-                    FullPlaybackButton(catalogIDs: playlist.orderedSongs.map { $0.id })
-                }
-                Spacer()
                 Button(playlist.allSelected ? "取消全选" : "全选") {
                     playlist.allSelected ? playlist.clearSelection() : playlist.selectAll()
                 }
                 .font(.caption)
+                Spacer()
                 Text("已选 \(playlist.selectedCount)/\(playlist.items.count)")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -70,10 +65,8 @@ struct PlaylistView: View {
             SongRowView(
                 item: item,
                 isSelected: playlist.selected.contains(item.id),
-                isCurrent: preview.currentId == item.id,
-                isPlaying: preview.isPlaying,
-                onToggleSelect: { playlist.toggle(item.id) },
-                onTogglePlay: { preview.toggle(item.song) }
+                queue: playlist.orderedSongs,
+                onToggleSelect: { playlist.toggle(item.id) }
             )
             .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
             .swipeActions(edge: .leading, allowsFullSwipe: true) {

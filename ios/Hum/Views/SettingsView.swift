@@ -48,6 +48,7 @@ struct SettingsView: View {
             }
             .navigationTitle("接入设置")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if session.mode == .byok {

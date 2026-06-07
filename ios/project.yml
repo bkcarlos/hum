@@ -35,6 +35,9 @@ targets:
         NSAppleMusicUsageDescription: "Hum 需要访问 Apple Music 来试听、完整播放并把你勾选的歌曲建成歌单。"
         # 运行时从 Bundle 读取后端基址（见 APIConfig.swift）
         HUMApiBase: "$(HUM_API_BASE)"
+        # 后台音频：30s 预览(AVPlayer) + 完整播放(MusicKit) 切到后台/锁屏仍继续播放
+        UIBackgroundModes:
+          - audio
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

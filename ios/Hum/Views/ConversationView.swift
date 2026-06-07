@@ -41,6 +41,7 @@ struct ConversationView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             composer
         }
         .onAppear { if examples.isEmpty { loadExamples() } }

@@ -5,13 +5,17 @@ import SwiftUI
 struct RootView: View {
     @Environment(\.horizontalSizeClass) private var hSize
     @EnvironmentObject private var ui: UIState
+    @EnvironmentObject private var music: MusicAuthStore
 
     var body: some View {
-        if hSize == .regular {
-            splitLayout
-        } else {
-            compactLayout
+        Group {
+            if hSize == .regular {
+                splitLayout
+            } else {
+                compactLayout
+            }
         }
+        .task { await music.refresh() }   // 启动恢复完整播放能力（订阅用户重开 App 后仍显示「完整」）
     }
 
     private var compactLayout: some View {
