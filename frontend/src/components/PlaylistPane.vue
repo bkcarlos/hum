@@ -104,7 +104,7 @@ async function onCreate() {
     createErr.value = '请至少勾选一首歌。'
     return
   }
-  // Building a library playlist needs Apple Music — connect on demand.
+  // 防御：建歌单 UI 只在连上后显示，正常不会进这里；万一断连竞态则按需重连。
   if (!apple.authorized && !(await apple.connect())) {
     createErr.value = apple.error || '需要连接 Apple Music 才能把歌单存进你的资料库。'
     return
@@ -224,32 +224,43 @@ async function onCreate() {
       </n-scrollbar>
 
       <footer class="actions">
-        <!-- Name/description sit by the create action, not above the list: you name
-             the playlist after reviewing and selecting, right before creating it. -->
-        <div class="meta-edit">
-          <n-input v-model:value="playlist.playlistName" placeholder="歌单名" size="small" />
-          <n-input
-            v-model:value="playlist.description"
-            placeholder="歌单描述"
-            size="small"
-            type="textarea"
-            :autosize="{ minRows: 1, maxRows: 3 }"
-            style="margin-top: 6px"
-          />
+        <!-- 建歌单需要 Apple Music（后端 CreatePlaylist 要 Music-User-Token）：连上才显示
+             「创建歌单」操作，与完整播放是同一道「连上才解锁」的能力门槛；未连给连接 CTA。 -->
+        <template v-if="apple.authorized">
+          <!-- Name/description sit by the create action, not above the list: you name
+               the playlist after reviewing and selecting, right before creating it. -->
+          <div class="meta-edit">
+            <n-input v-model:value="playlist.playlistName" placeholder="歌单名" size="small" />
+            <n-input
+              v-model:value="playlist.description"
+              placeholder="歌单描述"
+              size="small"
+              type="textarea"
+              :autosize="{ minRows: 1, maxRows: 3 }"
+              style="margin-top: 6px"
+            />
+          </div>
+
+          <n-alert v-if="created" type="success" :bordered="false" style="margin-bottom: 8px">
+            已在你的 Apple Music 资料库创建「{{ created.name }}」。
+            <a :href="created.url" target="_blank" rel="noopener">在 Apple Music 中打开 ↗</a>
+          </n-alert>
+          <n-alert v-if="createErr" type="error" :bordered="false" style="margin-bottom: 8px">{{ createErr }}</n-alert>
+
+          <n-button type="primary" block :loading="creating" :disabled="playlist.selectedCount === 0" @click="onCreate">
+            建成歌单（{{ playlist.selectedCount }} 首）
+          </n-button>
+          <n-text depth="3" class="disclaimer">
+            通过 API 创建的歌单默认私有，且无法经 API 公开/分享；如需公开请在 Apple Music App 中手动调整。
+          </n-text>
+        </template>
+
+        <div v-else class="connect-cta">
+          <n-text depth="3" class="connect-tip">勾选喜欢的歌，连接 Apple Music 后即可一键存成歌单。</n-text>
+          <n-button secondary block :loading="apple.connecting" @click="apple.connect()">
+            连接 Apple Music 建歌单
+          </n-button>
         </div>
-
-        <n-alert v-if="created" type="success" :bordered="false" style="margin-bottom: 8px">
-          已在你的 Apple Music 资料库创建「{{ created.name }}」。
-          <a :href="created.url" target="_blank" rel="noopener">在 Apple Music 中打开 ↗</a>
-        </n-alert>
-        <n-alert v-if="createErr" type="error" :bordered="false" style="margin-bottom: 8px">{{ createErr }}</n-alert>
-
-        <n-button type="primary" block :loading="creating" :disabled="playlist.selectedCount === 0" @click="onCreate">
-          建成歌单（{{ playlist.selectedCount }} 首）
-        </n-button>
-        <n-text depth="3" class="disclaimer">
-          通过 API 创建的歌单默认私有，且无法经 API 公开/分享；如需公开请在 Apple Music App 中手动调整。
-        </n-text>
       </footer>
     </template>
 
@@ -277,6 +288,15 @@ async function onCreate() {
 }
 .meta-edit {
   margin-bottom: 8px;
+}
+.connect-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.connect-tip {
+  font-size: 13px;
+  line-height: 1.5;
 }
 .toolbar {
   display: flex;
