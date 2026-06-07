@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -183,10 +184,24 @@ func (h *Handlers) Models(c *gin.Context) {
 func writeLLMError(c *gin.Context, err error) {
 	var apiErr *llm.APIError
 	if errors.As(err, &apiErr) {
-		httpx.Fail(c, statusForKind(apiErr.Kind), string(apiErr.Kind), apiErr.Message)
+		// 原始上游细节（含 Base URL / 响应体）始终只进服务端日志。
+		if apiErr.Detail != "" {
+			slog.Warn("llm upstream error",
+				"kind", apiErr.Kind, "status", apiErr.Status,
+				"provider", apiErr.Provider, "detail", apiErr.Detail)
+		}
+		// 仅当本请求带了用户自己的 key（BYOK）时才回显细节——那是用户自己配的 Base URL。
+		// 免费档用的是服务端自有 Base URL，绝不外露（红线）。
+		msg := apiErr.Message
+		if apiErr.Detail != "" && strings.TrimSpace(c.GetHeader(llmAPIKeyHeader)) != "" {
+			msg += "（" + apiErr.Detail + "）"
+		}
+		httpx.Fail(c, statusForKind(apiErr.Kind), string(apiErr.Kind), msg)
 		return
 	}
-	httpx.Fail(c, http.StatusBadGateway, "upstream", err.Error())
+	// 未分类错误：原文可能含 URL，只进日志，给用户清洁文案。
+	slog.Warn("llm error (unclassified)", "err", err.Error())
+	httpx.Fail(c, http.StatusBadGateway, "upstream", "调用上游失败，请稍后重试。")
 }
 
 func statusForKind(k llm.ErrorKind) int {
