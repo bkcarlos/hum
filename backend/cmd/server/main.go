@@ -113,7 +113,7 @@ func main() {
 		AllowOrigins: cfg.CORSAllowedOrigins,
 		AllowMethods: []string{"GET", "POST", "OPTIONS"},
 		// Custom headers: BYOK key, Music User Token, and the free-tier session Bearer.
-		AllowHeaders:     []string{"Origin", "Content-Type", "X-LLM-Api-Key", "Music-User-Token", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "X-LLM-Api-Key", "Music-User-Token", "Authorization", "X-Request-Id"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,
 	}))
