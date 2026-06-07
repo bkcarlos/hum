@@ -65,11 +65,21 @@ export async function unauthorize(): Promise<void> {
 
 const MK_PLAYING = 2 // MusicKit.PlaybackStates.playing
 
-/** Queue the given catalog song ids and start full-track playback. */
-export async function playFullTracks(songIds: string[]): Promise<void> {
+/** Queue the given catalog song ids and start full-track playback at startIndex. */
+export async function playFullTracks(songIds: string[], startIndex = 0): Promise<void> {
   const mk = await ensureMusicKit()
-  await mk.setQueue({ songs: songIds, startPlaying: false })
+  await mk.setQueue({ songs: songIds, startPosition: Math.max(0, startIndex), startPlaying: false })
   await mk.play()
+}
+
+export async function skipNextFull(): Promise<void> {
+  const mk = await ensureMusicKit()
+  await mk.skipToNextItem()
+}
+
+export async function skipPrevFull(): Promise<void> {
+  const mk = await ensureMusicKit()
+  await mk.skipToPreviousItem()
 }
 
 export async function pauseFull(): Promise<void> {
@@ -88,4 +98,12 @@ export async function onFullPlaybackChange(cb: (playing: boolean) => void): Prom
   const handler = () => cb(mk.playbackState === MK_PLAYING)
   mk.addEventListener('playbackStateDidChange', handler)
   return () => mk.removeEventListener('playbackStateDidChange', handler)
+}
+
+/** Subscribe to now-playing-item changes; calls cb(currentCatalogId | ''). Returns unsubscribe. */
+export async function onNowPlayingChange(cb: (id: string) => void): Promise<() => void> {
+  const mk = await ensureMusicKit()
+  const handler = () => cb(mk.nowPlayingItem?.id ?? '')
+  mk.addEventListener('nowPlayingItemDidChange', handler)
+  return () => mk.removeEventListener('nowPlayingItemDidChange', handler)
 }

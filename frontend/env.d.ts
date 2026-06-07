@@ -24,10 +24,12 @@ declare global {
 
     // Full (non-preview) playback for subscribers (F6). Loosely typed — the v3
     // SDK ships no first-party types; we only declare what we call.
-    setQueue(opts: { songs?: string[]; song?: string; startPlaying?: boolean }): Promise<unknown>
+    setQueue(opts: { songs?: string[]; song?: string; startPlaying?: boolean; startPosition?: number }): Promise<unknown>
     play(): Promise<unknown>
     pause(): void
     stop(): void
+    skipToNextItem(): Promise<unknown>
+    skipToPreviousItem(): Promise<unknown>
     readonly playbackState: number // MusicKit.PlaybackStates (2 = playing, 3 = paused)
     readonly nowPlayingItem: { id: string } | null
     addEventListener(name: string, handler: (event: unknown) => void): void

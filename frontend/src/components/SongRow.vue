@@ -8,6 +8,8 @@ const props = defineProps<{
   selected: boolean
   current: boolean
   playing: boolean
+  tag?: '' | 'full' | 'preview' // 当前在放这首时的模式：完整 / 试听
+  playDisabled?: boolean // 无法播放（未连 Apple Music 且无 30s 预览）
   swipe?: boolean // mobile: swipe right = select, swipe left = delete
 }>()
 const emit = defineEmits<{ toggleSelect: []; togglePlay: []; remove: [] }>()
@@ -105,6 +107,9 @@ function onClickCapture(e: MouseEvent) {
       <div class="meta">
         <div class="line1">
           <span class="title" :title="item.song.title">{{ item.song.title }}</span>
+          <n-tag v-if="tag" size="tiny" :type="tag === 'full' ? 'success' : 'default'" :bordered="false">
+            {{ tag === 'full' ? '完整' : '试听' }}
+          </n-tag>
           <n-tag v-if="item.status === 'new'" size="tiny" type="info" :bordered="false">新</n-tag>
           <n-tag v-else size="tiny" :bordered="false">保留</n-tag>
           <n-tag v-if="item.song.contentRating === 'explicit'" size="tiny" type="warning" :bordered="false">E</n-tag>
@@ -117,8 +122,8 @@ function onClickCapture(e: MouseEvent) {
       <n-button
         circle
         size="small"
-        :disabled="!item.song.previewUrl"
-        :title="item.song.previewUrl ? '试听' : '暂无预览'"
+        :disabled="playDisabled"
+        :title="playDisabled ? '暂无预览' : tag === 'full' ? '完整播放/暂停' : '播放/暂停'"
         @click="emit('togglePlay')"
       >
         {{ current && playing ? '⏸' : '▶' }}

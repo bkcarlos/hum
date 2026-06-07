@@ -8,28 +8,42 @@ import { usePreviewPlayer } from '@/composables/usePreviewPlayer'
 import { useFullPlayer } from '@/composables/useFullPlayer'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { createPlaylist } from '@/api/client'
-import type { ApiError } from '@/types'
+import type { ApiError, Song } from '@/types'
 
 const playlist = usePlaylistStore()
 const apple = useAppleStore()
-const { currentId, playing, setQueue, toggle, next, prev } = usePreviewPlayer()
-const { playingFull, setFullQueue, playPauseFull } = useFullPlayer()
+const preview = usePreviewPlayer()
+const full = useFullPlayer()
+const fullHint = ref('')
 
 // Mobile (tabs layout): rows become swipeable and the transport moves into a
 // dedicated now-playing bar at the top of the list, instead of the header.
 const isNarrow = useMediaQuery('(max-width: 900px)')
 
 const songsInOrder = computed(() => playlist.items.map((it) => it.song))
+
+// 统一「当前在放」：哪个播放器有 currentId 就以它为准（同一时刻只放一个）。
+const activeIsFull = computed(() => full.currentId.value !== '')
+const activeCurrentId = computed(() => full.currentId.value || preview.currentId.value)
+const activePlaying = computed(() => (activeIsFull.value ? full.playing.value : preview.playing.value))
 const currentSong = computed(
-  () => songsInOrder.value.find((s) => s.id === currentId.value) ?? songsInOrder.value[0] ?? null,
+  () => songsInOrder.value.find((s) => s.id === activeCurrentId.value) ?? songsInOrder.value[0] ?? null,
 )
+
 watch(
   songsInOrder,
   (s) => {
-    setQueue(s)
-    setFullQueue(s.map((x) => x.id))
+    preview.setQueue(s)
+    full.setQueue(s)
   },
   { immediate: true },
+)
+// 断开 Apple Music → 停掉完整播放（回到 30s 试听模式）。
+watch(
+  () => apple.authorized,
+  (on) => {
+    if (!on) full.stop()
+  },
 )
 
 const allSelected = computed(
@@ -40,21 +54,48 @@ function toggleAll(v: boolean) {
   else playlist.clearSelection()
 }
 
+// 播放分流（对齐 iOS）：连了 Apple Music → 完整播放该曲（失败/非订阅回退 30s 试听）；
+// 没连 → 30s 试听。同一时刻只放一个。
+async function onTogglePlay(song: Song) {
+  if (apple.authorized) {
+    preview.stop()
+    if (await full.toggle(song)) {
+      fullHint.value = ''
+    } else {
+      fullHint.value = '完整播放失败：可能未订阅，或当前结果区域与你的 Apple Music 不一致；已用 30s 试听。'
+      preview.toggle(song)
+    }
+  } else {
+    preview.toggle(song)
+  }
+}
+
 function playPause() {
-  const cur = songsInOrder.value.find((s) => s.id === currentId.value)
-  if (cur) toggle(cur)
-  else if (songsInOrder.value[0]) toggle(songsInOrder.value[0])
+  const cur = songsInOrder.value.find((s) => s.id === activeCurrentId.value) ?? songsInOrder.value[0]
+  if (cur) void onTogglePlay(cur)
+}
+function next() {
+  if (activeIsFull.value) void full.next()
+  else preview.next()
+}
+function prev() {
+  if (activeIsFull.value) void full.prev()
+  else preview.prev()
+}
+
+/** 当前在放这首时的标签：full→完整 / preview→试听 / 其它→空。 */
+function rowTag(id: string): '' | 'full' | 'preview' {
+  if (id !== activeCurrentId.value) return ''
+  return activeIsFull.value ? 'full' : 'preview'
+}
+function playDisabled(song: Song): boolean {
+  // 没连 Apple Music → 靠 previewUrl；连了(完整模式)则都可点。
+  return !apple.authorized && !song.previewUrl
 }
 
 const creating = ref(false)
 const created = ref<{ name: string; url: string } | null>(null)
 const createErr = ref('')
-
-// Full playback needs Apple Music — connect on demand, then play.
-async function onFullPlay() {
-  if (!apple.authorized && !(await apple.connect())) return
-  await playPauseFull()
-}
 
 async function onCreate() {
   created.value = null
@@ -98,14 +139,13 @@ async function onCreate() {
       <strong>歌单 · 精确操作</strong>
       <n-space v-if="playlist.hasResult && !isNarrow" size="small" align="center">
         <n-button circle size="tiny" title="上一首" @click="prev">⏮</n-button>
-        <n-button circle size="small" title="预览播放/暂停（30s）" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
-        <n-button circle size="tiny" title="下一首" @click="next">⏭</n-button>
         <n-button
           circle
           size="small"
-          :title="apple.authorized ? '完整播放/暂停' : '完整播放（需连接 Apple Music · 订阅）'"
-          @click="onFullPlay"
-        >{{ playingFull ? '⏸' : '♪' }}</n-button>
+          :title="apple.authorized ? '完整播放/暂停' : '预览播放/暂停（30s）'"
+          @click="playPause"
+        >{{ activePlaying ? '⏸' : '▶' }}</n-button>
+        <n-button circle size="tiny" title="下一首" @click="next">⏭</n-button>
       </n-space>
     </header>
 
@@ -130,18 +170,17 @@ async function onCreate() {
         <div v-else class="p-art placeholder">♫</div>
         <div class="p-meta">
           <div class="p-title">{{ currentSong?.title ?? '—' }}</div>
-          <div class="p-artist">{{ currentSong ? currentSong.artist : '点一首开始试听' }}</div>
+          <div class="p-artist">{{ currentSong ? currentSong.artist : '点一首开始播放' }}</div>
         </div>
         <div class="p-controls">
           <n-button circle size="small" title="上一首" @click="prev">⏮</n-button>
-          <n-button circle type="primary" title="预览播放/暂停（30s）" @click="playPause">{{ playing ? '⏸' : '▶' }}</n-button>
-          <n-button circle size="small" title="下一首" @click="next">⏭</n-button>
           <n-button
             circle
-            size="small"
-            :title="apple.authorized ? '完整播放/暂停' : '完整播放（需连接 Apple Music · 订阅）'"
-            @click="onFullPlay"
-          >{{ playingFull ? '⏸' : '♪' }}</n-button>
+            type="primary"
+            :title="apple.authorized ? '完整播放/暂停' : '预览播放/暂停（30s）'"
+            @click="playPause"
+          >{{ activePlaying ? '⏸' : '▶' }}</n-button>
+          <n-button circle size="small" title="下一首" @click="next">⏭</n-button>
         </div>
       </div>
 
@@ -165,17 +204,21 @@ async function onCreate() {
         </n-button>
       </n-alert>
 
+      <n-alert v-if="fullHint" type="warning" closable class="undo-bar" @close="fullHint = ''">{{ fullHint }}</n-alert>
+
       <n-scrollbar class="list">
         <SongRow
           v-for="it in playlist.items"
           :key="it.song.id"
           :item="it"
           :selected="playlist.selected.has(it.song.id)"
-          :current="currentId === it.song.id"
-          :playing="playing"
+          :current="activeCurrentId === it.song.id"
+          :playing="activePlaying"
+          :tag="rowTag(it.song.id)"
+          :play-disabled="playDisabled(it.song)"
           :swipe="isNarrow"
           @toggle-select="playlist.toggle(it.song.id)"
-          @toggle-play="toggle(it.song)"
+          @toggle-play="onTogglePlay(it.song)"
           @remove="playlist.removeItem(it.song.id)"
         />
       </n-scrollbar>

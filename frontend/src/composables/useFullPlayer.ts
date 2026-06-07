@@ -1,41 +1,87 @@
 import { ref } from 'vue'
-import { onFullPlaybackChange, pauseFull, playFullTracks, resumeFull } from '@/services/musickit'
+import type { Song } from '@/types'
+import {
+  onFullPlaybackChange,
+  onNowPlayingChange,
+  pauseFull,
+  playFullTracks,
+  resumeFull,
+  skipNextFull,
+  skipPrevFull,
+} from '@/services/musickit'
 
 // Full-track playback for Apple Music subscribers (F6). Mirrors usePreviewPlayer's
-// shape so the UI can offer 完整播放 alongside the 30s preview controls. Playback
-// is always user-initiated; a non-subscriber's play() rejects and we reset state.
-const playingFull = ref(false)
-let queueIds: string[] = []
-let started = false
-let unsubscribe: (() => void) | null = null
+// shape (currentId / playing / toggle / next / prev) so the UI can dispatch to
+// whichever player matches the current mode（连上=完整 / 未连=30s 试听）.
+// Module-level refs = one shared instance.
+const currentId = ref('')
+const playing = ref(false)
+let ids: string[] = []
+let listening = false
 
-async function ensureListener() {
-  if (unsubscribe) return
-  unsubscribe = await onFullPlaybackChange((p) => (playingFull.value = p))
+async function ensureListeners() {
+  if (listening) return
+  listening = true
+  await onFullPlaybackChange((p) => (playing.value = p))
+  await onNowPlayingChange((id) => {
+    if (id) currentId.value = id // 自动续播时跟随当前曲
+  })
 }
 
-/** Update the full-playback queue to the current displayed order. */
-function setFullQueue(ids: string[]) {
-  queueIds = ids
+function setQueue(songs: Song[]) {
+  ids = songs.map((s) => s.id)
 }
 
-/** Toggle full playback: pause if playing, resume if started, else start the queue. */
-async function playPauseFull() {
-  try {
-    await ensureListener()
-    if (playingFull.value) {
-      await pauseFull()
-    } else if (started) {
-      await resumeFull()
-    } else if (queueIds.length) {
-      await playFullTracks(queueIds)
-      started = true
+/** Toggle full playback of a song. Returns false if it couldn't play (non-subscriber
+ *  / region mismatch / error) so the caller can fall back to the 30s preview. */
+async function toggle(song: Song): Promise<boolean> {
+  await ensureListeners()
+  // 同一首：暂停 / 续播。
+  if (currentId.value === song.id) {
+    try {
+      if (playing.value) await pauseFull()
+      else await resumeFull()
+      return true
+    } catch {
+      return false
     }
+  }
+  // 换一首：从该曲起播完整队列。乐观设 currentId（挡二次点击重播），失败回滚。
+  const i = ids.indexOf(song.id)
+  currentId.value = song.id
+  playing.value = true
+  try {
+    await playFullTracks(ids, i < 0 ? 0 : i)
+    return true
   } catch {
-    playingFull.value = false // non-subscriber / error → caller still has previews
+    currentId.value = ''
+    playing.value = false
+    return false
   }
 }
 
+async function next() {
+  try {
+    await skipNextFull()
+  } catch {
+    /* ignore */
+  }
+}
+
+async function prev() {
+  try {
+    await skipPrevFull()
+  } catch {
+    /* ignore */
+  }
+}
+
+function stop() {
+  void pauseFull()
+  playing.value = false
+  currentId.value = ''
+}
+
 export function useFullPlayer() {
-  return { playingFull, setFullQueue, playPauseFull }
+  return { currentId, playing, setQueue, toggle, next, prev, stop }
 }
