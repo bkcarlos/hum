@@ -83,7 +83,7 @@ WEB_DIR="$PWD/frontend/dist" GIN_MODE=release PORT=8080 go -C backend run ./cmd/
 
 - Pinia stores：`llmConfig`（BYOK 配置，key 存浏览器 localStorage）/ `apple`（Music User Token 仅存会话内存，不持久化）/ `conversation` / `playlist`。
 - 所有后端调用走 [`api/client.ts`](frontend/src/api/client.ts)；BYOK key 经 `keyHeader()` 注入 `X-LLM-Api-Key`，**别在别处缓存 key**。
-- MusicKit JS 封装在 `services/musickit.ts`；推荐编排/预览播放在 `composables/`（`useRecommendation` / `usePreviewPlayer`）。当前仅 30s 预览，完整播放待办。
+- MusicKit JS 封装在 `services/musickit.ts`；推荐编排/预览播放在 `composables/`（`useRecommendation` / `usePreviewPlayer`）。30s 预览 + 订阅用户完整播放（`playFullTracks`，F6）均已实现。
 - BYOK Provider 预设表在 `data/providers.ts`。
 
 ## 关键文件地图

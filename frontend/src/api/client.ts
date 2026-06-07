@@ -17,6 +17,13 @@ const http = axios.create({
   timeout: 60_000,
 })
 
+// Tag every request with a short correlation id (matches the backend slog
+// `request_id`), so a browser network line can be matched to server log lines.
+http.interceptors.request.use((config) => {
+  config.headers.set('X-Request-Id', crypto.randomUUID().slice(0, 8))
+  return config
+})
+
 // Unwrap the {data} envelope on success; normalize {error:{code,message}} on failure.
 http.interceptors.response.use(
   (res) => res.data?.data,

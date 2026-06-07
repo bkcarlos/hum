@@ -26,6 +26,12 @@ import (
 )
 
 func main() {
+	// 生产用 JSON 结构化日志：Cloud Logging 据此把 request 字段(method/path/status/
+	// request_id)解析成可查字段 + 正确映射 severity。GIN_MODE=debug 保留可读文本(本地开发)。
+	if os.Getenv("GIN_MODE") != "debug" {
+		slog.SetDefault(newGCPLogger())
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("loading config", "err", err)
@@ -190,4 +196,34 @@ func registerFrontend(r *gin.Engine, dir string) {
 		}
 		c.File(index) // SPA fallback
 	})
+}
+
+// newGCPLogger returns a JSON slog logger whose keys match Cloud Logging's schema
+// (severity + message), so the request logger's fields are queryable in Logs
+// Explorer and errors are colored by severity. Still never logs headers/bodies/keys.
+func newGCPLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			switch a.Key {
+			case slog.LevelKey:
+				a.Key = "severity"
+				if lvl, ok := a.Value.Any().(slog.Level); ok {
+					switch {
+					case lvl >= slog.LevelError:
+						a.Value = slog.StringValue("ERROR")
+					case lvl >= slog.LevelWarn:
+						a.Value = slog.StringValue("WARNING")
+					case lvl >= slog.LevelInfo:
+						a.Value = slog.StringValue("INFO")
+					default:
+						a.Value = slog.StringValue("DEBUG")
+					}
+				}
+			case slog.MessageKey:
+				a.Key = "message"
+			}
+			return a
+		},
+	}))
 }
