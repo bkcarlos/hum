@@ -23,6 +23,7 @@ const (
 	fsDocConfig      = "config"
 	fsColGlobal      = "humQuotaGlobal"
 	fsColUser        = "humQuotaUser"
+	fsColUserMeta    = "humQuotaUserMeta" // {sub} -> { email } (captured at login)
 	fsColBans        = "humQuotaBans"
 	fsConfigCacheTTL = 30 * time.Second // live config, but don't read it every request
 )
@@ -42,6 +43,10 @@ type fsUserCounter struct {
 
 type fsBan struct {
 	Banned bool `firestore:"banned"`
+}
+
+type fsUserMeta struct {
+	Email string `firestore:"email"`
 }
 
 // FirestoreStore is the durable, cross-instance quota Store for production.
@@ -255,11 +260,57 @@ func (s *FirestoreStore) AdminUsage(ctx context.Context, day string) (int, []Use
 		}
 	}
 
+	// Attach known emails (sub -> email) for just the listed users, in one batch.
+	if len(byUser) > 0 {
+		refs := make([]*firestore.DocumentRef, 0, len(byUser))
+		for sub := range byUser {
+			refs = append(refs, s.client.Collection(fsColUserMeta).Doc(sub))
+		}
+		snaps, err := s.client.GetAll(ctx, refs)
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, snap := range snaps {
+			if !snap.Exists() {
+				continue
+			}
+			var m fsUserMeta
+			if snap.DataTo(&m) == nil {
+				if u, ok := byUser[snap.Ref.ID]; ok {
+					u.Email = m.Email
+				}
+			}
+		}
+	}
+
 	out := make([]UserUsage, 0, len(byUser))
 	for _, u := range byUser {
 		out = append(out, *u)
 	}
 	return global, out, nil
+}
+
+func (s *FirestoreStore) SetUserEmail(ctx context.Context, sub, email string) error {
+	if email == "" {
+		return nil
+	}
+	_, err := s.client.Collection(fsColUserMeta).Doc(sub).Set(ctx, fsUserMeta{Email: email})
+	return err
+}
+
+func (s *FirestoreStore) GetUserEmail(ctx context.Context, sub string) (string, error) {
+	snap, err := s.client.Collection(fsColUserMeta).Doc(sub).Get(ctx)
+	if status.Code(err) == codes.NotFound {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var m fsUserMeta
+	if err := snap.DataTo(&m); err != nil {
+		return "", err
+	}
+	return m.Email, nil
 }
 
 func (s *FirestoreStore) IsBanned(ctx context.Context, sub string) (bool, error) {

@@ -84,7 +84,7 @@ onMounted(load)
         <table v-else class="users">
           <thead>
             <tr>
-              <th>Apple sub</th>
+              <th>用户</th>
               <th class="num">已用</th>
               <th class="st">状态</th>
               <th class="op">操作</th>
@@ -92,7 +92,10 @@ onMounted(load)
           </thead>
           <tbody>
             <tr v-for="u in data.users" :key="u.sub">
-              <td class="sub">{{ u.sub }}</td>
+              <td>
+                <div v-if="u.email" class="email">{{ u.email }}</div>
+                <div class="sub" :class="{ muted: u.email }" :title="u.sub">{{ u.sub }}</div>
+              </td>
               <td class="num">{{ u.used }}</td>
               <td class="st">
                 <n-tag :type="u.banned ? 'error' : 'success'" size="small" :bordered="false" round>
@@ -180,11 +183,19 @@ onMounted(load)
 .users tr:last-child td {
   border-bottom: none;
 }
+.email {
+  font-size: 13px;
+  color: #1d1d1f;
+}
 .sub {
   font-family: ui-monospace, monospace;
   font-size: 12px;
   color: #1d1d1f;
   word-break: break-all;
+}
+.sub.muted {
+  font-size: 11px;
+  color: #98989d;
 }
 .num {
   width: 80px;

@@ -32,7 +32,8 @@ func (h *Handlers) Me(c *gin.Context) {
 	if cfg, cerr := h.quota.GetConfig(c.Request.Context()); cerr == nil {
 		isAdmin = cfg.IsAdmin(sub)
 	}
-	httpx.OK(c, gin.H{"sub": sub, "isAdmin": isAdmin})
+	email, _ := h.quota.GetUserEmail(c.Request.Context(), sub)
+	httpx.OK(c, gin.H{"sub": sub, "email": email, "isAdmin": isAdmin})
 }
 
 // AdminOnly guards the admin API: it requires a valid free-tier session whose
@@ -73,5 +74,7 @@ func (h *Handlers) AdminOnly() gin.HandlerFunc {
 // load to gate the page (a non-admin is stopped by AdminOnly with 403 before
 // reaching this handler).
 func (h *Handlers) AdminMe(c *gin.Context) {
-	httpx.OK(c, gin.H{"sub": c.GetString(adminSubKey), "isAdmin": true})
+	sub := c.GetString(adminSubKey)
+	email, _ := h.quota.GetUserEmail(c.Request.Context(), sub)
+	httpx.OK(c, gin.H{"sub": sub, "email": email, "isAdmin": true})
 }

@@ -63,10 +63,11 @@ type Decision struct {
 	GlobalLimit int    `json:"globalLimit"`
 }
 
-// UserUsage is one user's metered usage on a given day plus their ban state,
-// for the admin usage/users view.
+// UserUsage is one user's metered usage on a given day plus their ban state and
+// (when known) the Apple email, for the admin usage/users view.
 type UserUsage struct {
 	Sub    string `json:"sub"`
+	Email  string `json:"email,omitempty"`
 	Used   int    `json:"used"`
 	Banned bool   `json:"banned"`
 }
@@ -101,6 +102,12 @@ type Store interface {
 
 	IsBanned(ctx context.Context, sub string) (bool, error)
 	SetBanned(ctx context.Context, sub string, banned bool) error
+
+	// SetUserEmail records the Apple email for a sub (captured at login, when the
+	// email scope is granted), so the admin view can show emails instead of opaque
+	// subs. GetUserEmail returns "" when unknown.
+	SetUserEmail(ctx context.Context, sub, email string) error
+	GetUserEmail(ctx context.Context, sub string) (string, error)
 }
 
 // Day is the canonical day bucket key (UTC), shared by callers and stores so a

@@ -129,6 +129,7 @@ export interface QuotaConfig {
 /** One user's metered usage for a day + ban state (admin usage view). */
 export interface UserUsage {
   sub: string
+  email?: string // Apple email when known (captured at login)
   used: number
   banned: boolean
 }

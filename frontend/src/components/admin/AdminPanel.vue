@@ -25,8 +25,9 @@ const nav: { key: Section; label: string; icon: string }[] = [
 async function verify() {
   phase.value = 'checking'
   try {
-    const { sub } = await adminMe(admin.session)
+    const { sub, email } = await adminMe(admin.session)
     admin.sub = sub
+    admin.email = email
     phase.value = 'ready'
   } catch {
     admin.clear()
@@ -77,7 +78,7 @@ onMounted(() => {
 
       <div class="who">
         <div class="who-label">已登录</div>
-        <div class="who-sub" :title="admin.sub">{{ admin.sub }}</div>
+        <div class="who-sub" :title="admin.email || admin.sub">{{ admin.email || admin.sub }}</div>
         <button class="logout" @click="onLogout">退出登录</button>
       </div>
     </aside>

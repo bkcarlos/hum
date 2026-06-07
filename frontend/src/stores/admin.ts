@@ -10,6 +10,7 @@ const LS_KEY = 'hum.admin.session'
 export const useAdminStore = defineStore('admin', () => {
   const session = ref<string>(localStorage.getItem(LS_KEY) ?? '')
   const sub = ref<string>('')
+  const email = ref<string>('') // re-fetched via /admin/me on each load
   const hasSession = computed(() => session.value !== '')
 
   function setSession(token: string) {
@@ -21,8 +22,9 @@ export const useAdminStore = defineStore('admin', () => {
   function clear() {
     session.value = ''
     sub.value = ''
+    email.value = ''
     localStorage.removeItem(LS_KEY)
   }
 
-  return { session, sub, hasSession, setSession, clear }
+  return { session, sub, email, hasSession, setSession, clear }
 })

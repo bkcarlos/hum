@@ -23,8 +23,9 @@ const webCfg = ref<AppleWebConfig | null>(null)
 async function finishWithSession(session: string) {
   admin.setSession(session)
   try {
-    const { sub } = await adminMe(admin.session)
+    const { sub, email } = await adminMe(admin.session)
     admin.sub = sub
+    admin.email = email
     emit('authed')
   } catch (e) {
     const err = e as ApiError

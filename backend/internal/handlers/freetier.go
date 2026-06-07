@@ -36,10 +36,15 @@ func (h *Handlers) AppleAuth(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, "bad_request", "缺少 identityToken。")
 		return
 	}
-	sub, err := h.appleAuth.Verify(strings.TrimSpace(body.IdentityToken))
+	sub, email, err := h.appleAuth.Verify(strings.TrimSpace(body.IdentityToken))
 	if err != nil {
 		httpx.Fail(c, http.StatusUnauthorized, "apple_auth_failed", "Apple 登录校验失败，请重试。")
 		return
+	}
+	// Persist the Apple email (present when the email scope is granted) keyed by
+	// sub, so /auth/me + the admin usage view can show it. Best-effort.
+	if email != "" && h.quota != nil {
+		_ = h.quota.SetUserEmail(c.Request.Context(), sub, email)
 	}
 	tok, err := auth.IssueSession(h.sessionSecret, sub, sessionTTL, time.Now())
 	if err != nil {
@@ -63,7 +68,7 @@ func (h *Handlers) AppleWebConfig(c *gin.Context) {
 		"enabled":     true,
 		"clientId":    h.cfg.AppleWebClientID,
 		"redirectUri": h.cfg.AppleWebRedirectURI,
-		"scope":       "",
+		"scope":       "email", // ask for email so we can show it instead of the opaque sub
 	})
 }
 

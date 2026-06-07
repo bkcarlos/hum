@@ -30,17 +30,25 @@ func NewAppleVerifier(audiences []string, httpTimeout time.Duration) *AppleVerif
 	return &AppleVerifier{Audiences: audiences, KeyFunc: newAppleJWKS(httpTimeout).keyfunc()}
 }
 
+// appleIDClaims adds the `email` claim (present when the email scope is granted)
+// to the standard registered claims.
+type appleIDClaims struct {
+	Email string `json:"email,omitempty"`
+	jwt.RegisteredClaims
+}
+
 // Verify checks the token's signature against Apple's keys and validates issuer
-// (apple) and expiry, confirms the audience is one we accept, then returns `sub`.
-func (v *AppleVerifier) Verify(identityToken string) (string, error) {
+// (apple) and expiry, confirms the audience is one we accept, then returns the
+// stable `sub` and the `email` claim (empty if the email scope wasn't granted).
+func (v *AppleVerifier) Verify(identityToken string) (sub, email string, err error) {
 	if len(v.Audiences) == 0 {
-		return "", errors.New("auth: no apple audiences configured")
+		return "", "", errors.New("auth: no apple audiences configured")
 	}
 	timeFunc := time.Now
 	if v.Now != nil {
 		timeFunc = v.Now
 	}
-	claims := &jwt.RegisteredClaims{}
+	claims := &appleIDClaims{}
 	// No jwt.WithAudience here — it would require the token to carry EVERY listed
 	// aud (AND). We accept any one of them, checked below.
 	parser := jwt.NewParser(
@@ -49,15 +57,15 @@ func (v *AppleVerifier) Verify(identityToken string) (string, error) {
 		jwt.WithTimeFunc(timeFunc),
 	)
 	if _, err := parser.ParseWithClaims(identityToken, claims, v.KeyFunc); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if claims.Subject == "" {
-		return "", errors.New("auth: apple token missing sub")
+		return "", "", errors.New("auth: apple token missing sub")
 	}
 	if !audienceAllowed(claims.Audience, v.Audiences) {
-		return "", errors.New("auth: apple token audience not accepted")
+		return "", "", errors.New("auth: apple token audience not accepted")
 	}
-	return claims.Subject, nil
+	return claims.Subject, claims.Email, nil
 }
 
 // audienceAllowed reports whether the token's aud claim contains any accepted aud.

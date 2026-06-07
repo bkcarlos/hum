@@ -133,7 +133,7 @@ export function exchangeAppleToken(identityToken: string): Promise<{ session: st
 
 /** The signed-in user's Apple sub (+ admin flag) for any valid session — used to
  *  show the account in the free-tier UI. */
-export function getMe(session: string): Promise<{ sub: string; isAdmin: boolean }> {
+export function getMe(session: string): Promise<{ sub: string; email: string; isAdmin: boolean }> {
   return http.get('/auth/me', { headers: { Authorization: `Bearer ${session}` } })
 }
 
@@ -145,7 +145,7 @@ function bearer(session: string) {
 }
 
 /** Who am I: the caller's Apple sub + whether they're an admin. Any valid session. */
-export function adminMe(session: string): Promise<{ sub: string; isAdmin: boolean }> {
+export function adminMe(session: string): Promise<{ sub: string; email: string; isAdmin: boolean }> {
   return http.get('/admin/me', bearer(session))
 }
 

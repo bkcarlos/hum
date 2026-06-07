@@ -140,6 +140,42 @@ func TestAdminUsage_AggregatesAndSorts(t *testing.T) {
 	}
 }
 
+func TestEmail_InMeAndUsage(t *testing.T) {
+	h, hdr := adminSession(t) // admin "admin-1"
+	ctx := context.Background()
+	_ = h.quota.SetUserEmail(ctx, "admin-1", "boss@example.com")
+	_ = h.quota.SetUserEmail(ctx, "u1", "u1@example.com")
+	cfg, _ := h.quota.GetConfig(ctx)
+	_, _ = h.quota.Reserve(ctx, "u1", quota.Day(time.Now()), cfg)
+	r := adminRouter(h)
+
+	// /admin/me carries the admin's own email.
+	w := do(r, http.MethodGet, "/api/admin/me", hdr, nil)
+	var me struct {
+		Email string `json:"email"`
+	}
+	decodeData(w, &me)
+	if me.Email != "boss@example.com" {
+		t.Fatalf("admin/me email = %q, want boss@example.com", me.Email)
+	}
+
+	// /admin/usage carries each user's email.
+	w = do(r, http.MethodGet, "/api/admin/usage", hdr, nil)
+	var us struct {
+		Users []quota.UserUsage `json:"users"`
+	}
+	decodeData(w, &us)
+	found := false
+	for _, u := range us.Users {
+		if u.Sub == "u1" && u.Email == "u1@example.com" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("usage missing u1 email: %+v", us.Users)
+	}
+}
+
 func TestAdminBanUnban_TakesEffectAtReserve(t *testing.T) {
 	h, hdr := adminSession(t)
 	r := adminRouter(h)

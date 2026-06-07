@@ -12,9 +12,10 @@ import (
 type MemoryStore struct {
 	mu     sync.Mutex
 	cfg    Config
-	user   map[string]int  // key: day + "|" + sub
-	global map[string]int  // key: day
-	banned map[string]bool // key: sub
+	user   map[string]int    // key: day + "|" + sub
+	global map[string]int    // key: day
+	banned map[string]bool   // key: sub
+	emails map[string]string // key: sub -> Apple email
 }
 
 // NewMemoryStore seeds the store with an initial config.
@@ -24,6 +25,7 @@ func NewMemoryStore(initial Config) *MemoryStore {
 		user:   map[string]int{},
 		global: map[string]int{},
 		banned: map[string]bool{},
+		emails: map[string]string{},
 	}
 }
 
@@ -115,9 +117,26 @@ func (m *MemoryStore) AdminUsage(_ context.Context, day string) (int, []UserUsag
 	}
 	out := make([]UserUsage, 0, len(byUser))
 	for _, u := range byUser {
+		u.Email = m.emails[u.Sub]
 		out = append(out, *u)
 	}
 	return m.global[day], out, nil
+}
+
+func (m *MemoryStore) SetUserEmail(_ context.Context, sub, email string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if email == "" {
+		return nil
+	}
+	m.emails[sub] = email
+	return nil
+}
+
+func (m *MemoryStore) GetUserEmail(_ context.Context, sub string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.emails[sub], nil
 }
 
 func (m *MemoryStore) IsBanned(_ context.Context, sub string) (bool, error) {
