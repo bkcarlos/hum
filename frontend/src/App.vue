@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { NConfigProvider, NButton, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 import AppleConnect from '@/components/AppleConnect.vue'
@@ -10,18 +10,29 @@ import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useLlmConfigStore } from '@/stores/llmConfig'
 import { useSessionStore } from '@/stores/session'
 import { usePlaylistStore } from '@/stores/playlist'
+import { useAppleLogin } from '@/composables/useAppleLogin'
 
 const llm = useLlmConfigStore()
 const session = useSessionStore()
 const playlist = usePlaylistStore()
 
-// Two topbar buttons double as a mode switch: the active mode (used for
-// recommendations) is filled, the other outlined. Each opens 接入设置 to its
-// section. Labels reflect readiness (signed-in email / configured ✓).
-const freeLabel = computed(() =>
-  session.signedIn ? (session.email ? `免费额度 · ${session.email}` : '免费额度 ✓') : '免费额度',
-)
-const byokLabel = computed(() => (llm.configured ? '自带 Key ✓' : '自带 Key'))
+// Topbar access: ONE primary CTA for the common path (免费 Apple 登录), with BYOK
+// demoted to a small secondary link. The primary reflects the current setup.
+const { loading: appleLoading, available: appleAvailable, login: doAppleLogin, ensureConfig } = useAppleLogin()
+onMounted(ensureConfig)
+
+const primaryLabel = computed(() => {
+  if (session.signedIn) return session.email ? `免费额度 · ${session.email}` : '免费额度 ✓'
+  if (session.mode === 'byok') return llm.configured ? '自带 Key ✓' : '配置自带 Key'
+  return '用 Apple 登录 · 免费开始'
+})
+const primaryType = computed<'primary' | 'default'>(() => {
+  if (session.signedIn) return 'default'
+  if (session.mode === 'byok') return llm.configured ? 'default' : 'primary'
+  return 'primary'
+})
+// The non-active path, shown as a subtle link.
+const secondaryLabel = computed(() => (session.mode === 'byok' ? '用免费额度' : '自带 Key'))
 
 // Responsive degradation (must-do): narrow screens drop the side-by-side layout
 // for tabs (对话 / 歌单) — never two panes squeezed on mobile.
@@ -40,9 +51,19 @@ watch(
 
 const showConfig = ref(false)
 
-// Clicking a mode button switches the active mode AND opens its config/status.
-function openMode(m: 'free' | 'byok') {
-  session.setMode(m)
+async function onPrimary() {
+  if (session.signedIn || session.mode === 'byok') {
+    showConfig.value = true // already set up → open settings to manage
+    return
+  }
+  // Fresh + free: log in directly (one click); fall back to the dialog if web
+  // Apple login isn't configured server-side.
+  session.setMode('free')
+  if (appleAvailable.value) await doAppleLogin()
+  else showConfig.value = true
+}
+function onSecondary() {
+  session.setMode(session.mode === 'byok' ? 'free' : 'byok')
   showConfig.value = true
 }
 
@@ -69,22 +90,10 @@ const themeOverrides: GlobalThemeOverrides = {
         </div>
         <div class="actions">
           <AppleConnect />
-          <n-button
-            :type="session.mode === 'free' ? 'primary' : 'default'"
-            size="small"
-            title="免费额度（Sign in with Apple）"
-            @click="openMode('free')"
-          >
-            <span class="acc-label">{{ freeLabel }}</span>
+          <n-button :type="primaryType" size="small" :loading="appleLoading" @click="onPrimary">
+            <span class="acc-label">{{ primaryLabel }}</span>
           </n-button>
-          <n-button
-            :type="session.mode === 'byok' ? 'primary' : 'default'"
-            size="small"
-            title="自带 LLM Key（BYOK）"
-            @click="openMode('byok')"
-          >
-            {{ byokLabel }}
-          </n-button>
+          <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
         </div>
       </header>
 
@@ -166,6 +175,13 @@ const themeOverrides: GlobalThemeOverrides = {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
+}
+/* BYOK is the demoted, secondary path — a subtle link next to the primary CTA. */
+.alt-link {
+  font-size: 12px;
+}
+.alt-link :deep(.n-button__content) {
+  color: #8a8a8e;
 }
 
 .dual {

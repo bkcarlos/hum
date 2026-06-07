@@ -16,9 +16,8 @@ import {
 import { PROVIDER_PRESETS, presetById } from '@/data/providers'
 import { useLlmConfigStore } from '@/stores/llmConfig'
 import { useSessionStore } from '@/stores/session'
-import { useAppleStore } from '@/stores/apple'
-import { testLlm, listModels, getAppleWebConfig, exchangeAppleToken, getMe } from '@/api/client'
-import { appleSignIn, isAppleCancel, type AppleWebConfig } from '@/services/appleSignIn'
+import { useAppleLogin } from '@/composables/useAppleLogin'
+import { testLlm, listModels } from '@/api/client'
 import type { ApiError, ModelInfo } from '@/types'
 
 const props = defineProps<{ show: boolean }>()
@@ -30,40 +29,9 @@ const visible = computed({
 
 const llm = useLlmConfigStore()
 const session = useSessionStore()
-const apple = useAppleStore()
 
-// ── Free tier (Sign in with Apple) ────────────────────────────────────
-const webCfg = ref<AppleWebConfig | null>(null)
-const appleLoading = ref(false)
-const freeErr = ref('')
-
-async function onAppleLogin() {
-  if (!webCfg.value || appleLoading.value) return
-  appleLoading.value = true
-  freeErr.value = ''
-  try {
-    const idToken = await appleSignIn(webCfg.value)
-    const { session: tok } = await exchangeAppleToken(idToken)
-    let sub = ''
-    let email = ''
-    try {
-      const me = await getMe(tok)
-      sub = me.sub
-      email = me.email
-    } catch {
-      /* sub/email are just for display */
-    }
-    session.setSession(tok, sub, email)
-    // After login, also connect Apple Music (for full playback + building
-    // playlists). Best-effort: a non-subscriber / cancel doesn't undo the login,
-    // and we skip it if already connected so we don't re-prompt.
-    if (!apple.authorized) await apple.connect()
-  } catch (e) {
-    if (!isAppleCancel(e)) freeErr.value = (e as ApiError).message || (e as Error).message || 'Apple 登录失败，请重试。'
-  } finally {
-    appleLoading.value = false
-  }
-}
+// ── Free tier (Sign in with Apple) — shared flow, also used by the topbar CTA.
+const { webCfg, loading: appleLoading, error: freeErr, login: onAppleLogin, ensureConfig } = useAppleLogin()
 
 // ── BYOK ──────────────────────────────────────────────────────────────
 const presetOptions = PROVIDER_PRESETS.map((p) => ({ label: p.label, value: p.id }))
@@ -160,16 +128,7 @@ function onClear() {
   resetModels()
 }
 
-onMounted(async () => {
-  try {
-    const cfg = await getAppleWebConfig()
-    if (cfg.enabled && cfg.clientId) {
-      webCfg.value = { clientId: cfg.clientId, redirectUri: cfg.redirectUri ?? '', scope: cfg.scope ?? '' }
-    }
-  } catch {
-    /* web Apple login unavailable → free tier shows a fallback note */
-  }
-})
+onMounted(ensureConfig)
 </script>
 
 <template>
