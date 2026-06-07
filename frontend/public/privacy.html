@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hum（哼一首）· 隐私政策</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px;
+           font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+           color: #1c1c1e; background: #fff; }
+    @media (prefers-color-scheme: dark) { body { color: #e5e5e7; background: #1c1c1e; } a { color: #6ca8ff; } }
+    h1 { font-size: 24px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-top: 32px; }
+    .meta { color: #888; font-size: 14px; }
+    code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+    ul { padding-left: 22px; }
+    li { margin: 6px 0; }
+  </style>
+</head>
+<body>
+  <h1>Hum（哼一首）· 隐私政策</h1>
+  <p class="meta">最后更新：2026-06-08 ｜ 开发者：个人开发者（非商业项目）</p>
+
+  <p>Hum（“哼一首”，以下称“本 App”）是一款个人开发、<strong>非商业、免费</strong>的应用：你用自然语言描述心情或场景，由 AI 从 Apple Music 真实曲库为你挑歌、试听并一键建成歌单。本政策说明我们收集哪些信息、如何使用与存储，以及你的权利。</p>
+
+  <h2>1. 我们收集并存储的信息</h2>
+  <ul>
+    <li><strong>Apple 账号标识与邮箱</strong>：当你使用“通过 Apple 登录”（Sign in with Apple）使用免费额度时，我们会收到 Apple 提供的稳定用户标识（<code>sub</code>）以及邮箱（仅当你授权邮箱权限时）。它们存储在服务端（Google Cloud Firestore），用于：识别你的账号、统计每日免费额度、在管理后台识别用户、以及防止滥用。</li>
+    <li><strong>使用计数</strong>：你每日的推荐调用次数与封禁状态（按上述用户标识关联），用于执行免费额度与防滥用。</li>
+    <li><strong>会话令牌</strong>：登录后签发的会话令牌存储在<strong>你自己的设备上</strong>（iOS 钥匙串 / 浏览器本地存储），用于保持登录状态；不在服务端持久化。</li>
+  </ul>
+
+  <h2>2. 我们不收集 / 不存储的信息</h2>
+  <ul>
+    <li><strong>你自带的第三方 LLM API Key</strong>（BYOK 模式）：仅随单次请求转发给你指定的服务商，<strong>用完即弃</strong>，绝不落库、不缓存、不写日志。</li>
+    <li><strong>Apple Music 凭证</strong>：连接 Apple Music 产生的 Music User Token 仅存在于你设备的会话内存中，用于完整播放与建歌单，<strong>不上传、不持久化</strong>。</li>
+    <li><strong>密码</strong>：本 App 通过 Apple 登录，无需也不保存任何密码。</li>
+    <li>不收集精确位置、通讯录、相册、健康等信息。</li>
+  </ul>
+
+  <h2>3. 信息如何使用</h2>
+  <ul>
+    <li>提供并改进推荐与建歌单功能。</li>
+    <li>统计与执行免费额度（每人 / 全局每日上限），保护服务可用性与控制成本。</li>
+    <li>识别并阻止滥用行为。</li>
+  </ul>
+
+  <h2>4. 第三方服务</h2>
+  <ul>
+    <li><strong>Apple</strong>：Sign in with Apple（登录）与 Apple Music / MusicKit（搜索、播放、建歌单）。受 <a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener">Apple 隐私政策</a> 约束。</li>
+    <li><strong>大语言模型（LLM）服务商</strong>：你输入的心情 / 场景描述文本会被发送给 LLM 服务商用于解析意图、提名歌曲与排序——免费额度使用本服务的默认服务商，BYOK 模式使用你自行指定的服务商。该请求<strong>不包含你的身份信息</strong>。</li>
+    <li><strong>Google Cloud</strong>：托管后端服务（Cloud Run）与数据库（Firestore）。</li>
+  </ul>
+
+  <h2>5. 数据存储与保留</h2>
+  <p>服务端数据存储于 Google Cloud（Firestore）。每日使用计数按自然日记录；账号标识与邮箱保留至你请求删除，或账号长期无活动为止。</p>
+
+  <h2>6. 日志与安全</h2>
+  <p>服务端访问日志仅记录请求方法、路径、状态码、请求 ID 与错误码用于排障；包含密钥 / 令牌的请求头一律脱敏，<strong>不记录邮箱原文、不记录请求内容与凭证</strong>。传输全程使用 HTTPS。</p>
+
+  <h2>7. 你的权利</h2>
+  <p>你可以随时要求访问或<strong>删除</strong>与你关联的服务端数据（账号标识、邮箱、使用计数）。删除账号数据后，你仍可重新登录使用。请通过下方联系方式提出请求。</p>
+
+  <h2>8. 儿童隐私</h2>
+  <p>本 App 不面向 13 周岁以下儿童，也不会有意收集其个人信息。</p>
+
+  <h2>9. 政策变更</h2>
+  <p>本政策如有更新，将更新本页顶部的“最后更新”日期。重大变更会在 App 内提示。</p>
+
+  <h2>10. 联系方式</h2>
+  <p>如对本政策有疑问或希望删除数据，请联系：<strong><a href="mailto:bkcarlos@outlook.com">bkcarlos@outlook.com</a></strong></p>
+</body>
+</html>
