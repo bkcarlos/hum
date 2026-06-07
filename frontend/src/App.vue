@@ -15,18 +15,13 @@ const llm = useLlmConfigStore()
 const session = useSessionStore()
 const playlist = usePlaylistStore()
 
-// Topbar access button reflects the active mode: free tier needs a sign-in, BYOK
-// needs a configured key. Either way the button opens the same 接入设置 dialog.
-const accessReady = computed(() => (session.mode === 'free' ? session.signedIn : llm.configured))
-const accessLabel = computed(() =>
-  session.mode === 'free'
-    ? session.signedIn
-      ? '免费额度'
-      : '登录用免费额度'
-    : llm.configured
-      ? 'LLM 设置'
-      : '配置 LLM Key',
+// Two topbar buttons double as a mode switch: the active mode (used for
+// recommendations) is filled, the other outlined. Each opens 接入设置 to its
+// section. Labels reflect readiness (signed-in email / configured ✓).
+const freeLabel = computed(() =>
+  session.signedIn ? (session.email ? `免费额度 · ${session.email}` : '免费额度 ✓') : '免费额度',
 )
+const byokLabel = computed(() => (llm.configured ? '自带 Key ✓' : '自带 Key'))
 
 // Responsive degradation (must-do): narrow screens drop the side-by-side layout
 // for tabs (对话 / 歌单) — never two panes squeezed on mobile.
@@ -44,6 +39,12 @@ watch(
 )
 
 const showConfig = ref(false)
+
+// Clicking a mode button switches the active mode AND opens its config/status.
+function openMode(m: 'free' | 'byok') {
+  session.setMode(m)
+  showConfig.value = true
+}
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -68,8 +69,21 @@ const themeOverrides: GlobalThemeOverrides = {
         </div>
         <div class="actions">
           <AppleConnect />
-          <n-button :type="accessReady ? 'default' : 'primary'" size="small" @click="showConfig = true">
-            {{ accessLabel }}
+          <n-button
+            :type="session.mode === 'free' ? 'primary' : 'default'"
+            size="small"
+            title="免费额度（Sign in with Apple）"
+            @click="openMode('free')"
+          >
+            <span class="acc-label">{{ freeLabel }}</span>
+          </n-button>
+          <n-button
+            :type="session.mode === 'byok' ? 'primary' : 'default'"
+            size="small"
+            title="自带 LLM Key（BYOK）"
+            @click="openMode('byok')"
+          >
+            {{ byokLabel }}
           </n-button>
         </div>
       </header>
@@ -142,7 +156,16 @@ const themeOverrides: GlobalThemeOverrides = {
 .actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+/* Keep the signed-in email from blowing up the button width. */
+.acc-label {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .dual {

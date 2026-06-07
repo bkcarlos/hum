@@ -12,8 +12,6 @@ import {
   NSpace,
   NAlert,
   NText,
-  NRadioGroup,
-  NRadioButton,
 } from 'naive-ui'
 import { PROVIDER_PRESETS, presetById } from '@/data/providers'
 import { useLlmConfigStore } from '@/stores/llmConfig'
@@ -176,11 +174,24 @@ onMounted(async () => {
 
 <template>
   <n-modal v-model:show="visible">
-    <n-card style="width: 560px; max-width: 92vw" title="接入设置" :bordered="false" role="dialog">
-      <n-radio-group :value="session.mode" style="margin-bottom: 18px" @update:value="session.setMode($event)">
-        <n-radio-button value="free">免费额度（Apple 登录）</n-radio-button>
-        <n-radio-button value="byok">自带 Key（BYOK）</n-radio-button>
-      </n-radio-group>
+    <n-card
+      style="width: 560px; max-width: 92vw"
+      :title="session.mode === 'free' ? '接入设置 · 免费额度' : '接入设置 · 自带 Key'"
+      :bordered="false"
+      role="dialog"
+    >
+      <!-- The active mode is chosen via the two topbar buttons; this link is just
+           a quick in-dialog switch to the other mode. -->
+      <div style="margin-bottom: 16px">
+        <n-button
+          text
+          type="primary"
+          size="small"
+          @click="session.setMode(session.mode === 'free' ? 'byok' : 'free')"
+        >
+          {{ session.mode === 'free' ? '改用「自带 Key」→' : '改用「免费额度」→' }}
+        </n-button>
+      </div>
 
       <!-- FREE TIER -->
       <div v-if="session.mode === 'free'">
