@@ -36,7 +36,7 @@ WEB_DIR="$PWD/frontend/dist" GIN_MODE=release PORT=8080 go -C backend run ./cmd/
 ## 架构
 
 - **frontend/**：Vue 3 + Vite + TS + Pinia + Naive UI + axios。双栏 UI（左对话/右歌单），窄屏降级为 tab。
-- **backend/**：Go 1.23 + Gin（module `github.com/bkcarlos/hum`，入口 `cmd/server/main.go`）。
+- **backend/**：Go 1.25 + Gin（module `github.com/bkcarlos/hum`，入口 `cmd/server/main.go`）。go.mod 因 Firestore SDK 要求 `go 1.25`——Dockerfile 的构建镜像须 ≥ 此版本。
 - **ios/**：原生 iOS App（SwiftUI + 原生 MusicKit，iOS 16+，XcodeGen 工程；requirements v0.6 新增）。复用后端 LLM 链路（`/intent`·`/suggest`·`/rank`·`/examples`，BYOK key 存 iOS Keychain），Apple 部分（授权/完整播放/建歌单）用设备 MusicKit 而非后端 Developer Token。**改了 `.swift` 或 `git pull` 后必须先 `cd ios && xcodegen generate`**（`.xcodeproj` 是 gitignore 的静态文件清单，不会自动跟踪新文件）。
 - **生产=单进程**：同一个 Go 进程既托管前端静态文件（`WEB_DIR`，SPA fallback）又提供 `/api`，**同源、无 CORS**。`WEB_DIR` 为空时即开发模式（前端由 Vite 提供）。
 - Apple 凭证在启动时**可选**：未配置也能启动，`/api/apple/*` 返回 **503**，前端 + LLM 接口照常工作。

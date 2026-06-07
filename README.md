@@ -62,7 +62,7 @@ apple_music_llm/                 # 仓库目录（项目代号 Hum）
 
 ## 前置条件
 
-- Go ≥ 1.23、Node ≥ 20.19
+- Go ≥ 1.25、Node ≥ 20.19
 - （端到端需要）Apple Developer Program 账号、MusicKit Key（`.p8`）、一份 Apple Music 订阅
 - 一个你自己的 LLM API Key（OpenAI / DeepSeek / 通义 / Claude / Gemini 等，BYOK）
 

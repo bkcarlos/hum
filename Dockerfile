@@ -11,7 +11,10 @@ COPY frontend/ ./
 RUN npm run build            # -> /app/frontend/dist
 
 # ---- 2. Build the backend (static binary) ----
-FROM golang:1.23-alpine AS backend
+# Go 1.25: backend/go.mod requires it (the Firestore SDK + its deps declare
+# go 1.25). The alpine image pins GOTOOLCHAIN=local, so the builder version must
+# meet go.mod's requirement — keep this >= the `go` directive in backend/go.mod.
+FROM golang:1.25-alpine AS backend
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
