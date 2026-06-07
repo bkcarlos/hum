@@ -48,6 +48,7 @@ struct ConversationView: View {
 
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
+            AccessCTAView()
             Text("用一句话，描述你想听的").font(.title2).fontWeight(.bold)
             Text("Hum 从 Apple Music 真实曲库帮你挑歌、试听、一键建成歌单。")
                 .font(.subheadline).foregroundStyle(.secondary)

@@ -15,6 +15,7 @@ final class RecommendationCoordinator: ObservableObject {
 
     private let api: APIClient
     private let llm: LLMConfigStore
+    private let session: SessionStore
     private let convo: ConversationStore
     private let playlist: PlaylistStore
     private let music: MusicAuthStore
@@ -27,9 +28,9 @@ final class RecommendationCoordinator: ObservableObject {
     }
     private var lastAction: LastAction?
 
-    init(api: APIClient, llm: LLMConfigStore, convo: ConversationStore,
+    init(api: APIClient, llm: LLMConfigStore, session: SessionStore, convo: ConversationStore,
          playlist: PlaylistStore, music: MusicAuthStore, preview: PreviewPlayer) {
-        self.api = api; self.llm = llm; self.convo = convo
+        self.api = api; self.llm = llm; self.session = session; self.convo = convo
         self.playlist = playlist; self.music = music; self.preview = preview
     }
 
@@ -73,10 +74,10 @@ final class RecommendationCoordinator: ObservableObject {
     // MARK: - Pipelines
 
     private func runFull(text: String, seeds: [String]) async {
-        guard precondition() else { return }
+        guard let auth = resolveAuth() else { return }
         begin("AI 选歌…")
         do {
-            let s = try await api.suggest(llm.body, apiKey: llm.apiKey,
+            let s = try await api.suggest(llm.body, auth: auth,
                                           storefront: music.storefront, text: withAvoidHint(text), seedArtists: seeds)
             guard !s.candidates.isEmpty else {
                 fail("AI 推荐的歌在 Apple Music 上都没匹配到，换个说法或更具体些。"); return
@@ -85,7 +86,7 @@ final class RecommendationCoordinator: ObservableObject {
             TasteStore.record(s.intent.genres + s.intent.moods + s.intent.keywords)
 
             stage = "智能排序…"
-            let rank = try await api.rank(llm.body, apiKey: llm.apiKey, intent: s.intent,
+            let rank = try await api.rank(llm.body, auth: auth, intent: s.intent,
                                           candidates: s.candidates.map(Candidate.init(song:)))
             playlist.setRecommendation(s.candidates, rank: rank)
             preview.setQueue(playlist.orderedSongs)
@@ -96,10 +97,10 @@ final class RecommendationCoordinator: ObservableObject {
     }
 
     private func runRerank(instruction: String) async {
-        guard precondition() else { return }
+        guard let auth = resolveAuth() else { return }
         begin("重新挑选…")
         do {
-            let rank = try await api.rank(llm.body, apiKey: llm.apiKey, intent: convo.intent,
+            let rank = try await api.rank(llm.body, auth: auth, intent: convo.intent,
                                           candidates: playlist.candidatesForRank, instruction: instruction)
             playlist.applyRefinement(rank)
             preview.setQueue(playlist.orderedSongs)
@@ -110,16 +111,16 @@ final class RecommendationCoordinator: ObservableObject {
     }
 
     private func runResearch() async {
-        guard precondition() else { return }
+        guard let auth = resolveAuth() else { return }
         begin("AI 选歌…")
         do {
-            let s = try await api.suggest(llm.body, apiKey: llm.apiKey, storefront: music.storefront,
+            let s = try await api.suggest(llm.body, auth: auth, storefront: music.storefront,
                                           text: withAvoidHint(intentToText(convo.intent)), seedArtists: convo.intent.seedArtists)
             guard !s.candidates.isEmpty else {
                 fail("按当前条件没匹配到歌曲，调整一下条件再试。"); return
             }
             stage = "智能排序…"
-            let rank = try await api.rank(llm.body, apiKey: llm.apiKey, intent: convo.intent,
+            let rank = try await api.rank(llm.body, auth: auth, intent: convo.intent,
                                           candidates: s.candidates.map(Candidate.init(song:)))
             playlist.applyRefinement(rank, songs: s.candidates)
             preview.setQueue(playlist.orderedSongs)
@@ -131,20 +132,37 @@ final class RecommendationCoordinator: ObservableObject {
 
     // MARK: - Helpers
 
-    /// M-i1 只要求 LLM 配好（storefront 用默认 "us"）；M-i2 起再加 Apple 授权前置。
-    private func precondition() -> Bool {
-        guard llm.configured else {
-            lastError = "请先在「设置」里配置并测试 LLM。"
-            errorAction = .openSettings
-            return false
+    /// 鉴权前置（对应前端 effectiveAuth + precondition）：按接入模式给出本次请求的鉴权。
+    /// 免费档需已登录（→ .session）；自带 Key 需配置完成（→ .byok）。未满足则写错误 + 返回 nil。
+    /// storefront 仍用 music.storefront（未授权时为推断的默认区）——出推荐 + 预览不需连 Apple Music。
+    private func resolveAuth() -> LlmAuth? {
+        switch session.mode {
+        case .free:
+            guard session.signedIn else {
+                lastError = "请先用 Apple 登录以使用免费额度（在「设置」里登录），或改用自带 Key。"
+                errorAction = .openSettings
+                AppLog.shared.info("reco", "已拦截：免费档未登录")
+                return nil
+            }
+            AppLog.shared.debug("reco", "鉴权：免费档会话")
+            return .session(session.session)
+        case .byok:
+            guard llm.configured else {
+                lastError = "请先在「设置」里配置并测试自带 Key，或改用免费额度登录。"
+                errorAction = .openSettings
+                AppLog.shared.info("reco", "已拦截：自带 Key 未配置")
+                return nil
+            }
+            AppLog.shared.debug("reco", "鉴权：自带 Key")
+            return .byok(llm.apiKey)
         }
-        return true
     }
 
     private func begin(_ s: String) { loading = true; stage = s; lastError = "" }
     private func end() { loading = false; stage = "" }
     private func fail(_ msg: String, action: ErrorAction = .retry) {
         loading = false; stage = ""; lastError = msg; errorAction = action
+        AppLog.shared.error("reco", "推荐失败：\(msg)")
     }
 
     /// 把本地"负向口味"（删除歌曲累积的风格/歌手）软性附到推荐请求上。

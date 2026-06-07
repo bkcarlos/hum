@@ -9,6 +9,7 @@ struct HumApp: App {
             RootView()
                 .environmentObject(env)
                 .environmentObject(env.llm)
+                .environmentObject(env.session)
                 .environmentObject(env.convo)
                 .environmentObject(env.playlist)
                 .environmentObject(env.music)

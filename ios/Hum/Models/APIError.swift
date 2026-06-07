@@ -25,8 +25,9 @@ struct APIError: Error, Codable, Equatable {
         }
     }
 
-    /// 配置类错误（key 缺失/无效、模型不存在、请求被拒）——应引导去「设置」而非重试。
+    /// 配置/接入类错误——应引导去「设置」（配置/切模式/登录）而非无意义重试：
+    /// key 缺失或无效、模型不存在、请求被拒，以及免费档的额度用尽 / 未登录。
     var needsSetup: Bool {
-        ["no_key", "auth", "bad_request", "model_not_found"].contains(code)
+        ["no_key", "auth", "bad_request", "model_not_found", "quota_exceeded", "no_session"].contains(code)
     }
 }

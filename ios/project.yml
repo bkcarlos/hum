@@ -26,6 +26,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.hum.app   # ← 改成你的 reverse-DNS
         TARGETED_DEVICE_FAMILY: "1,2"                     # iPhone + iPad
+        CODE_SIGN_ENTITLEMENTS: Hum/Hum.entitlements      # Sign in with Apple 能力（免费档登录）
     info:
       path: Hum/Info.plist
       properties:
@@ -43,3 +44,6 @@ targets:
     # 只靠 Info.plist 的 NSAppleMusicUsageDescription + 运行时 MusicAuthorization + 用户订阅。
     # com.apple.developer.musickit 是 MusicKit JS / Apple Music API 的 token capability，
     # 对原生 App 是无效 entitlement（会导致 "not found ... could not be included" 签名报错），故不配。
+    # Sign in with Apple（免费档登录）则**需要** entitlement：见上 CODE_SIGN_ENTITLEMENTS →
+    # Hum/Hum.entitlements 的 com.apple.developer.applesignin；并须在 Apple Developer 门户给
+    # App ID（你的 bundle id）勾选「Sign in with Apple」能力（Automatic 签名下 Xcode 通常自动注册）。

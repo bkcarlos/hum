@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// BYOK 设置：provider 预设 / Base URL / 模型（可拉取）/ API Key / 测试连接 / 清除。
+/// 接入设置：免费额度（Sign in with Apple）/ 自带 Key（BYOK）二选一。
+/// 顶部分段切换；免费档段 = 登录/退出；自带 Key 段 = provider/key/baseUrl/模型/测试。
 struct SettingsView: View {
     @EnvironmentObject private var llm: LLMConfigStore
+    @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var testing = false
@@ -16,73 +18,41 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Provider") {
-                    Picker("服务商", selection: Binding(
-                        get: { llm.presetId },
-                        set: { llm.applyPreset($0); resetHints() }
-                    )) {
-                        ForEach(LLMConfigStore.presets) { Text($0.label).tag($0.id) }
+                Section {
+                    Picker("接入方式", selection: $session.mode) {
+                        Text("免费额度").tag(SessionStore.Mode.free)
+                        Text("自带 Key").tag(SessionStore.Mode.byok)
                     }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text(session.mode == .free
+                         ? "用 Apple 登录即可，每天有固定免费次数，无需自备 key。"
+                         : "用你自己的 LLM Key，不限量；Key 只存本机钥匙串、用完即弃。")
                 }
 
-                Section("API Key") {
-                    SecureField("粘贴你的 API Key", text: $llm.apiKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: llm.apiKey) { _ in resetHints() }
-                }
-
-                Section("Base URL") {
-                    TextField("https://…", text: $llm.baseUrl)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .onChange(of: llm.baseUrl) { _ in resetHints() }
-                }
-
-                Section("模型") {
-                    if !llm.modelOptions.isEmpty {
-                        Picker("选择模型", selection: $llm.model) {
-                            if !llm.model.isEmpty && !llm.modelOptions.contains(llm.model) {
-                                Text(llm.model).tag(llm.model)
-                            }
-                            ForEach(llm.modelOptions, id: \.self) { Text($0).tag($0) }
-                        }
-                    }
-                    TextField("模型名（可手动输入）", text: $llm.model)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button {
-                        Task { await fetchModels() }
-                    } label: {
-                        HStack { Text("拉取模型"); if loadingModels { ProgressView() } }
-                    }
-                    .disabled(!canFetch || loadingModels)
-                    if let modelsOk {
-                        Text(modelsMsg).font(.caption).foregroundStyle(modelsOk ? .green : .red)
-                    }
+                if session.mode == .free {
+                    freeSection
+                } else {
+                    byokSections
                 }
 
                 Section {
-                    Button {
-                        Task { await runTest() }
+                    NavigationLink {
+                        DiagnosticsView()
                     } label: {
-                        HStack { Text("测试连接"); if testing { ProgressView() } }
-                    }
-                    .disabled(!llm.configured || testing)
-                    if let testOk {
-                        Text(testMsg).font(.caption).foregroundStyle(testOk ? .green : .red)
+                        Label("诊断日志", systemImage: "ladybug")
                     }
                 } footer: {
-                    Text("你的 API Key 只保存在本机钥匙串，调用时随请求转发给后端用于本次 LLM 调用、用完即弃；不在服务器保存、不记录日志。请勿在公共设备上保存。")
+                    Text("出问题时在这里查看、复制或分享最近的请求日志（不含任何密钥/令牌）。")
                 }
-
             }
-            .navigationTitle("LLM 设置 · BYOK")
+            .navigationTitle("接入设置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("清除", role: .destructive) { showClearConfirm = true }
+                    if session.mode == .byok {
+                        Button("清除", role: .destructive) { showClearConfirm = true }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { llm.persist(); dismiss() }
@@ -95,6 +65,110 @@ struct SettingsView: View {
                 Text("将删除本机保存的 Key 与自定义配置。")
             }
             .onDisappear { llm.persist() }
+        }
+    }
+
+    // MARK: - 免费额度（Sign in with Apple）
+
+    @ViewBuilder private var freeSection: some View {
+        if session.signedIn {
+            Section {
+                if !session.email.isEmpty {
+                    HStack {
+                        Text("Apple ID")
+                        Spacer()
+                        Text(session.email).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Button("退出登录", role: .destructive) { session.signOut() }
+            } header: {
+                Text("已登录")
+            } footer: {
+                Text("出推荐用的是服务端的 LLM Key，你无需任何配置。会话令牌只存本机钥匙串、不同步 iCloud。退出登录不影响你的自带 Key。")
+            }
+        } else {
+            Section {
+                AppleSignInButton()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                if session.loggingIn {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                        Text("登录中…").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if !session.loginError.isEmpty {
+                    Text(session.loginError).font(.caption).foregroundStyle(.red)
+                }
+            } header: {
+                Text("免费额度")
+            } footer: {
+                Text("用 Apple 登录即可免费试用：每天有固定次数、无需自备 key。不收费、不读取你的资料库，只保存一个本机会话令牌。没订阅 Apple Music 也能出推荐 + 30s 试听。")
+            }
+        }
+    }
+
+    // MARK: - 自带 Key（BYOK）
+
+    @ViewBuilder private var byokSections: some View {
+        Section("Provider") {
+            Picker("服务商", selection: Binding(
+                get: { llm.presetId },
+                set: { llm.applyPreset($0); resetHints() }
+            )) {
+                ForEach(LLMConfigStore.presets) { Text($0.label).tag($0.id) }
+            }
+        }
+
+        Section("API Key") {
+            SecureField("粘贴你的 API Key", text: $llm.apiKey)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onChange(of: llm.apiKey) { _ in resetHints() }
+        }
+
+        Section("Base URL") {
+            TextField("https://…", text: $llm.baseUrl)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .onChange(of: llm.baseUrl) { _ in resetHints() }
+        }
+
+        Section("模型") {
+            if !llm.modelOptions.isEmpty {
+                Picker("选择模型", selection: $llm.model) {
+                    if !llm.model.isEmpty && !llm.modelOptions.contains(llm.model) {
+                        Text(llm.model).tag(llm.model)
+                    }
+                    ForEach(llm.modelOptions, id: \.self) { Text($0).tag($0) }
+                }
+            }
+            TextField("模型名（可手动输入）", text: $llm.model)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button {
+                Task { await fetchModels() }
+            } label: {
+                HStack { Text("拉取模型"); if loadingModels { ProgressView() } }
+            }
+            .disabled(!canFetch || loadingModels)
+            if let modelsOk {
+                Text(modelsMsg).font(.caption).foregroundStyle(modelsOk ? .green : .red)
+            }
+        }
+
+        Section {
+            Button {
+                Task { await runTest() }
+            } label: {
+                HStack { Text("测试连接"); if testing { ProgressView() } }
+            }
+            .disabled(!llm.configured || testing)
+            if let testOk {
+                Text(testMsg).font(.caption).foregroundStyle(testOk ? .green : .red)
+            }
+        } footer: {
+            Text("你的 API Key 只保存在本机钥匙串，调用时随请求转发给后端用于本次 LLM 调用、用完即弃；不在服务器保存、不记录日志。请勿在公共设备上保存。")
         }
     }
 

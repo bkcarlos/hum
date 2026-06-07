@@ -6,6 +6,7 @@ import Combine
 final class AppEnvironment: ObservableObject {
     let api: APIClient
     let llm: LLMConfigStore
+    let session: SessionStore
     let convo: ConversationStore
     let playlist: PlaylistStore
     let music: MusicAuthStore
@@ -16,6 +17,7 @@ final class AppEnvironment: ObservableObject {
     init() {
         let api = APIClient()
         let llm = LLMConfigStore(api: api)
+        let session = SessionStore(api: api)
         let convo = ConversationStore()
         let playlist = PlaylistStore()
         let music = MusicAuthStore(music: MusicService())
@@ -23,11 +25,12 @@ final class AppEnvironment: ObservableObject {
 
         self.api = api
         self.llm = llm
+        self.session = session
         self.convo = convo
         self.playlist = playlist
         self.music = music
         self.preview = preview
-        self.reco = RecommendationCoordinator(api: api, llm: llm, convo: convo,
+        self.reco = RecommendationCoordinator(api: api, llm: llm, session: session, convo: convo,
                                               playlist: playlist, music: music, preview: preview)
     }
 }
