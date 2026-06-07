@@ -42,24 +42,40 @@ final class MusicAuthStore: ObservableObject {
         canPlayFull = false
     }
 
-    /// 完整播放（订阅用户）。
+    /// 完整播放（订阅用户）。**在 await 前**乐观标记 fullCurrentId/fullIsPlaying —— 不依赖
+    /// ApplicationMusicPlayer.queue.currentEntry（真机上 .item 常为 nil，导致列表不显示「完整」
+    /// 标签、且再次点同一行会重播叠加双音轨）。失败再回滚。
     func playFull(catalogIDs: [String], startAt index: Int = 0) async {
+        guard !catalogIDs.isEmpty else { return }
+        let i = min(max(index, 0), catalogIDs.count - 1)
+        fullCurrentId = catalogIDs[i]
+        fullIsPlaying = true
         do {
             try await music.playFull(catalogIDs: catalogIDs, startAt: index)
         } catch {
             self.error = "完整播放失败：\(error.localizedDescription)"
+            fullCurrentId = ""
+            fullIsPlaying = false
         }
     }
 
-    func pauseFull() { music.pause() }
+    func pauseFull() {
+        music.pause()
+        fullIsPlaying = false
+    }
 
-    /// 完整播放暂停/续播（列表行点当前完整曲时用）。
+    /// 完整播放暂停/续播（列表行点当前完整曲时用）。即时更新 fullIsPlaying，不等观察回调。
     func toggleFull() async {
         let p = ApplicationMusicPlayer.shared
         switch p.state.playbackStatus {
-        case .playing: p.pause()
-        case .paused: try? await p.play()
-        default: break
+        case .playing:
+            p.pause()
+            fullIsPlaying = false
+        case .paused:
+            try? await p.play()
+            fullIsPlaying = true
+        default:
+            break
         }
     }
 
