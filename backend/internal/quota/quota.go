@@ -22,6 +22,11 @@ type Config struct {
 	LLMProvider string `json:"llmProvider" firestore:"llmProvider"`
 	LLMBaseURL  string `json:"llmBaseUrl" firestore:"llmBaseUrl"`
 	LLMModel    string `json:"llmModel" firestore:"llmModel"`
+	// LLMAPIKey is an OPTIONAL admin-set server key for free-tier recs, taking
+	// precedence over the env DEFAULT_LLM_API_KEY. `json:"-"` so it is NEVER
+	// serialized to any API response (the admin UI only learns whether one is set,
+	// never its value); the firestore tag still persists it. Never log it.
+	LLMAPIKey string `json:"-" firestore:"llmApiKey"`
 	// Admins is the allowlist of Apple `sub`s permitted to use the admin API/UI.
 	// It lives in this same live config doc so it can be edited in the console
 	// without a restart. Bootstrap the first admin by reading your sub from

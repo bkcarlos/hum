@@ -124,6 +124,7 @@ export interface QuotaConfig {
   llmBaseUrl: string
   llmModel: string
   admins: string[]
+  llmKeySet?: boolean // GET-only: whether a server LLM key is configured (value never returned)
 }
 
 /** One user's metered usage for a day + ban state (admin usage view). */

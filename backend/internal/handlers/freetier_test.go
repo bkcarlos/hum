@@ -229,6 +229,35 @@ func TestAppleWebConfig(t *testing.T) {
 	}
 }
 
+func TestFreeTier_UsesAdminConfigKey(t *testing.T) {
+	// No env DEFAULT_LLM_API_KEY, but an admin-set config key (humQuota/config.
+	// llmApiKey) → free recs work, using that key.
+	up := mockSuggestUpstream()
+	defer up.Close()
+	cfg := &config.Config{UpstreamHTTPTimeout: 5 * time.Second} // no env DefaultLLMKey
+	store := quota.NewMemoryStore(quota.Config{
+		Enabled: true, PerUserDailyLimit: 5,
+		LLMProvider: "openai-compat", LLMBaseURL: up.URL, LLMModel: "m",
+		LLMAPIKey: "admin-set-key",
+	})
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	verifier := &auth.AppleVerifier{
+		Audiences: []string{"com.test"},
+		Now:       func() time.Time { return time.Now() },
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+	}
+	secret := []byte("sess-secret")
+	h := New(cfg, nil, resolvesToOne()).WithFreeTier(store, verifier, secret)
+	r := freeRouter(h)
+	sess, _ := auth.IssueSession(secret, "u1", time.Hour, time.Now())
+	w := do(r, http.MethodPost, "/api/suggest",
+		map[string]string{"Authorization": "Bearer " + sess},
+		map[string]any{"storefront": "us", "text": "jazz"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("free suggest with admin config key: want 200, got %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestFreeTier_NoServerLLMKeyDeniesFreeRecs(t *testing.T) {
 	// Identity wired but no server LLM key → a logged-in free-tier suggest is
 	// denied (free recs need the server key); login/admin stay available.

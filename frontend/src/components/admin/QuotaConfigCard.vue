@@ -22,6 +22,7 @@ const message = useMessage()
 const loading = ref(true)
 const saving = ref(false)
 const cfg = ref<QuotaConfig | null>(null)
+const newKey = ref('') // typed-but-unsaved server LLM key; blank = leave unchanged
 
 const providerOptions: { label: string; value: ProviderType }[] = [
   { label: 'OpenAI 兼容（openai-compat）', value: 'openai-compat' },
@@ -45,7 +46,11 @@ async function save() {
   saving.value = true
   try {
     // The whole config is sent; the server merges + preserves anything omitted.
-    cfg.value = await updateAdminConfig(admin.session, cfg.value)
+    // The LLM key is only sent when newly typed (blank = leave the existing one).
+    const patch: Partial<QuotaConfig> & { llmApiKey?: string } = { ...cfg.value }
+    if (newKey.value.trim()) patch.llmApiKey = newKey.value.trim()
+    cfg.value = await updateAdminConfig(admin.session, patch)
+    newKey.value = ''
     message.success('配置已保存，立即生效（Firestore ≤30s 缓存）。')
   } catch (e) {
     message.error((e as ApiError).message)
@@ -101,6 +106,19 @@ onMounted(load)
           </n-form-item>
           <n-form-item label="Model">
             <n-input v-model:value="cfg.llmModel" placeholder="模型名" />
+          </n-form-item>
+          <n-form-item label="API Key">
+            <n-space vertical :size="4" style="width: 100%">
+              <n-input
+                v-model:value="newKey"
+                type="password"
+                show-password-on="click"
+                :placeholder="cfg.llmKeySet ? '已配置 · 留空不变，输入则替换' : '未配置 · 粘贴服务端 LLM Key'"
+              />
+              <n-text depth="3" style="font-size: 12px">
+                服务端自有 key,存于后端、不会回显;留空保持不变。也可改用 Cloud Run Secret。
+              </n-text>
+            </n-space>
           </n-form-item>
         </n-form>
       </div>

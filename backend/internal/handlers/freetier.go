@@ -91,10 +91,8 @@ func (h *Handlers) resolveProvider(c *gin.Context, dto llmConfigDTO, requireMode
 		return p, noop, ok
 	}
 
-	// No key → free tier. The metered free-tier path needs the SERVER LLM key; if
-	// it isn't configured, free recommendations are unavailable (login + admin can
-	// still be on — they're decoupled), so steer the user to BYOK.
-	if !h.freeTierReady() {
+	// No key → free tier. Needs identity wired (login/admin infra).
+	if !h.authReady() {
 		httpx.Fail(c, http.StatusBadRequest, "no_key",
 			"免费额度暂未开放，请在「设置」中配置自带 Key。")
 		return nil, noop, false
@@ -110,6 +108,18 @@ func (h *Handlers) resolveProvider(c *gin.Context, dto llmConfigDTO, requireMode
 	cfg, err := h.quota.GetConfig(c.Request.Context())
 	if err != nil {
 		httpx.Fail(c, http.StatusInternalServerError, "quota_error", "读取配额配置失败。")
+		return nil, noop, false
+	}
+
+	// The free-tier server LLM key: an admin-set config key (humQuota/config.
+	// llmApiKey) wins, else the env DEFAULT_LLM_API_KEY. Need one from either.
+	apiKey := cfg.LLMAPIKey
+	if apiKey == "" {
+		apiKey = h.cfg.DefaultLLMKey
+	}
+	if apiKey == "" {
+		httpx.Fail(c, http.StatusBadRequest, "no_key",
+			"免费额度暂未开放，请在「设置」中配置自带 Key。")
 		return nil, noop, false
 	}
 
@@ -131,7 +141,7 @@ func (h *Handlers) resolveProvider(c *gin.Context, dto llmConfigDTO, requireMode
 		Provider: llm.ProviderType(cfg.LLMProvider),
 		BaseURL:  cfg.LLMBaseURL,
 		Model:    cfg.LLMModel,
-		APIKey:   h.cfg.DefaultLLMKey,
+		APIKey:   apiKey,
 		Timeout:  h.cfg.UpstreamHTTPTimeout,
 	})
 	if err != nil {

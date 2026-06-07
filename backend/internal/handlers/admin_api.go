@@ -17,15 +17,28 @@ import (
 // policy, surfaces daily usage, and bans/unbans users — all without a restart,
 // since the quota store is the single live source the request path already reads.
 
+// adminConfigView is what the admin UI receives: the whole Config (the LLM key is
+// dropped by Config's json:"-") plus a flag telling whether a key is set — so the
+// UI shows 已配置/未配置 without ever seeing the value.
+type adminConfigView struct {
+	quota.Config
+	LLMKeySet bool `json:"llmKeySet"`
+}
+
+func configView(c quota.Config) adminConfigView {
+	return adminConfigView{Config: c, LLMKeySet: c.LLMAPIKey != ""}
+}
+
 // AdminGetConfig (GET /api/admin/config) returns the live free-tier policy +
-// admin allowlist. No secret is exposed: the server LLM key is not part of Config.
+// admin allowlist. The server LLM key is NEVER returned (json:"-"); only a
+// llmKeySet boolean indicates whether one is configured.
 func (h *Handlers) AdminGetConfig(c *gin.Context) {
 	cfg, err := h.quota.GetConfig(c.Request.Context())
 	if err != nil {
 		httpx.Fail(c, http.StatusInternalServerError, "quota_error", "读取配额配置失败。")
 		return
 	}
-	httpx.OK(c, cfg)
+	httpx.OK(c, configView(cfg))
 }
 
 // adminConfigPatch is a partial update: a nil field is left unchanged, so a
@@ -38,6 +51,7 @@ type adminConfigPatch struct {
 	LLMProvider       *string   `json:"llmProvider"`
 	LLMBaseURL        *string   `json:"llmBaseUrl"`
 	LLMModel          *string   `json:"llmModel"`
+	LLMAPIKey         *string   `json:"llmApiKey"` // write-only: sets the server key (never returned)
 	Admins            *[]string `json:"admins"`
 }
 
@@ -81,6 +95,10 @@ func (h *Handlers) AdminUpdateConfig(c *gin.Context) {
 	if p.LLMModel != nil {
 		cfg.LLMModel = strings.TrimSpace(*p.LLMModel)
 	}
+	if p.LLMAPIKey != nil {
+		// Set the server key (empty string clears it → falls back to env key).
+		cfg.LLMAPIKey = strings.TrimSpace(*p.LLMAPIKey)
+	}
 	if p.Admins != nil {
 		cfg.Admins = cleanSubs(*p.Admins)
 	}
@@ -89,7 +107,7 @@ func (h *Handlers) AdminUpdateConfig(c *gin.Context) {
 		httpx.Fail(c, http.StatusInternalServerError, "quota_error", "保存配额配置失败。")
 		return
 	}
-	httpx.OK(c, cfg)
+	httpx.OK(c, configView(cfg))
 }
 
 // AdminUsage (GET /api/admin/usage?day=YYYY-MM-DD) returns the day's global

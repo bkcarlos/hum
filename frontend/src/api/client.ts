@@ -155,7 +155,10 @@ export function getAdminConfig(session: string): Promise<QuotaConfig> {
 
 /** Partial update: only the provided fields change (omitted ones — notably
  *  `admins` — are preserved server-side). */
-export function updateAdminConfig(session: string, patch: Partial<QuotaConfig>): Promise<QuotaConfig> {
+export function updateAdminConfig(
+  session: string,
+  patch: Partial<QuotaConfig> & { llmApiKey?: string },
+): Promise<QuotaConfig> {
   return http.post('/admin/config', patch, bearer(session))
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,6 +138,47 @@ func TestAdminUsage_AggregatesAndSorts(t *testing.T) {
 	// A malformed day is rejected.
 	if w := do(r, http.MethodGet, "/api/admin/usage?day=2026/06/07", hdr, nil); w.Code != http.StatusBadRequest {
 		t.Fatalf("bad day: want 400, got %d", w.Code)
+	}
+}
+
+func TestAdminConfig_LLMKeyWriteOnlyAndMasked(t *testing.T) {
+	h, hdr := adminSession(t)
+	r := adminRouter(h)
+
+	// Initially no key: GET reports llmKeySet=false and never exposes the field.
+	w := do(r, http.MethodGet, "/api/admin/config", hdr, nil)
+	if strings.Contains(w.Body.String(), "llmApiKey") {
+		t.Fatalf("GET config leaked the key field: %s", w.Body.String())
+	}
+	var v1 struct {
+		LLMKeySet bool `json:"llmKeySet"`
+	}
+	decodeData(w, &v1)
+	if v1.LLMKeySet {
+		t.Fatalf("expected llmKeySet=false initially")
+	}
+
+	// Set the key via POST.
+	if w := do(r, http.MethodPost, "/api/admin/config", hdr, map[string]any{"llmApiKey": "sk-secret-123"}); w.Code != http.StatusOK {
+		t.Fatalf("set key: %d %s", w.Code, w.Body.String())
+	}
+
+	// GET now reports it's set, but NEVER returns the value.
+	w = do(r, http.MethodGet, "/api/admin/config", hdr, nil)
+	if strings.Contains(w.Body.String(), "sk-secret-123") {
+		t.Fatalf("GET config leaked the key VALUE: %s", w.Body.String())
+	}
+	var v2 struct {
+		LLMKeySet bool `json:"llmKeySet"`
+	}
+	decodeData(w, &v2)
+	if !v2.LLMKeySet {
+		t.Fatalf("expected llmKeySet=true after setting the key")
+	}
+
+	// Persisted in the store for internal use.
+	if stored, _ := h.quota.GetConfig(context.Background()); stored.LLMAPIKey != "sk-secret-123" {
+		t.Fatalf("key not persisted: %q", stored.LLMAPIKey)
 	}
 }
 

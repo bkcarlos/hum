@@ -99,7 +99,7 @@ func main() {
 		if cfg.FreeTierConfigured() {
 			slog.Info("Apple login + admin + metered free-tier recommendations ENABLED", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal, "seededAdmins", len(cfg.AdminAppleSubs))
 		} else {
-			slog.Warn("Apple login + admin ENABLED, but free-tier recommendations are OFF — set DEFAULT_LLM_API_KEY + DEFAULT_LLM_MODEL to enable server-key recs", "seededAdmins", len(cfg.AdminAppleSubs))
+			slog.Warn("Apple login + admin ENABLED; free-tier recommendations OFF until an LLM key is set — via DEFAULT_LLM_API_KEY + DEFAULT_LLM_MODEL, or in the /admin config", "seededAdmins", len(cfg.AdminAppleSubs))
 		}
 	} else {
 		slog.Info("auth/admin/free-tier disabled — set SESSION_SECRET + APPLE_BUNDLE_ID for login+admin (and DEFAULT_LLM_API_KEY + DEFAULT_LLM_MODEL for free recs)")
