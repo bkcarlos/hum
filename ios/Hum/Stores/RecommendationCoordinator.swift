@@ -92,7 +92,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("为你挑了 \(playlist.items.count) 首：「\(playlist.playlistName)」。试听、勾选后可一键建歌单。")
             end()
-        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
+        } catch let e as APIError { failAPI(e) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -106,7 +106,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("已按「\(instruction)」重新挑选。")
             end()
-        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
+        } catch let e as APIError { failAPI(e) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -126,7 +126,7 @@ final class RecommendationCoordinator: ObservableObject {
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("已按编辑后的条件重新挑选。")
             end()
-        } catch let e as APIError { fail(e.userMessage, action: e.needsSetup ? .openSettings : .retry) }
+        } catch let e as APIError { failAPI(e) }
         catch { fail("出错了，请重试。") }
     }
 
@@ -163,6 +163,16 @@ final class RecommendationCoordinator: ObservableObject {
     private func fail(_ msg: String, action: ErrorAction = .retry) {
         loading = false; stage = ""; lastError = msg; errorAction = action
         AppLog.shared.error("reco", "推荐失败：\(msg)")
+    }
+
+    /// APIError 统一处理：免费档会话过期(no_session)→自动登出(UI 翻回登录态);
+    /// 配额用尽→文案附带「今日 x/limit 次」。
+    private func failAPI(_ e: APIError) {
+        if session.mode == .free && e.code == "no_session" {
+            session.signOut()
+            AppLog.shared.info("auth", "会话失效，已自动登出，请重新登录")
+        }
+        fail(e.userMessage + e.quotaSuffix, action: e.needsSetup ? .openSettings : .retry)
     }
 
     /// 把本地"负向口味"（删除歌曲累积的风格/歌手）软性附到推荐请求上。

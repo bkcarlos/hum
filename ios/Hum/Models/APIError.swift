@@ -5,6 +5,11 @@ import Foundation
 struct APIError: Error, Codable, Equatable {
     let code: String
     let message: String
+    // 配额用尽(429 quota_exceeded)时后端附带的计数；其它错误为 nil。
+    var userUsed: Int? = nil
+    var userLimit: Int? = nil
+    var globalUsed: Int? = nil
+    var globalLimit: Int? = nil
 
     static func network(_ message: String = "网络错误，请稍后重试。") -> APIError {
         APIError(code: "network", message: message)
@@ -29,5 +34,11 @@ struct APIError: Error, Codable, Equatable {
     /// key 缺失或无效、模型不存在、请求被拒，以及免费档的额度用尽 / 未登录。
     var needsSetup: Bool {
         ["no_key", "auth", "bad_request", "model_not_found", "quota_exceeded", "no_session"].contains(code)
+    }
+
+    /// 配额用尽时的「（今日 x/limit 次）」后缀；无计数则空串。
+    var quotaSuffix: String {
+        guard let used = userUsed, let limit = userLimit, limit > 0 else { return "" }
+        return "（今日 \(used)/\(limit) 次）"
     }
 }

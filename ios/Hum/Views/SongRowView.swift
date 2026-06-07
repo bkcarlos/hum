@@ -61,6 +61,10 @@ struct SongRowView: View {
             .contentShape(Rectangle())
             .onTapGesture { togglePlay() }
             .opacity(canPlay ? 1 : 0.45)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel("\(item.song.title)，\(item.song.artist)")
+            .accessibilityHint(canPlay ? (isPlaying ? "正在播放，点按暂停" : "点按播放") : "无法播放")
         }
         .padding(.vertical, 4)
     }

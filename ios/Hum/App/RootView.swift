@@ -4,6 +4,7 @@ import SwiftUI
 /// 常规宽度（iPad / 横屏）= 左对话 / 右歌单双栏。设置 sheet 由 UIState 统一控制。
 struct RootView: View {
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var ui: UIState
     @EnvironmentObject private var music: MusicAuthStore
 
@@ -16,6 +17,9 @@ struct RootView: View {
             }
         }
         .task { await music.refresh() }   // 启动恢复完整播放能力（订阅用户重开 App 后仍显示「完整」）
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { Task { await music.refresh() } }   // 回前台再刷一次（订阅态可能变）
+        }
     }
 
     private var compactLayout: some View {
