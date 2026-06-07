@@ -40,6 +40,12 @@ struct CreatePlaylistButton: View {
             creating = false
             return
         }
+        // 候选池区 ≠ 账户区：catalog id 跨区可能对不上 → 提示重搜（对齐 web）。
+        if !playlist.builtStorefront.isEmpty, playlist.builtStorefront != music.storefront {
+            msg = "当前结果基于 \(playlist.builtStorefront.uppercased()) 区，你的 Apple Music 是 \(music.storefront.uppercased()) 区。请用编辑后的条件重搜后再建歌单，以匹配你的曲库。"
+            creating = false
+            return
+        }
         let ids = playlist.selectedSongs.map { $0.id }
         let name = playlist.playlistName.isEmpty ? "我的 AI 歌单" : playlist.playlistName
         let (u, err) = await music.createPlaylist(

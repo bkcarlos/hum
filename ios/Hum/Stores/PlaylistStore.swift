@@ -13,6 +13,9 @@ final class PlaylistStore: ObservableObject {
     @Published var lastRemoved: RemovedItem?
     /// 删除后即时探测的"同类"剩余歌曲（同风格/同歌手），供"一起删"提示；与 lastRemoved 同生命周期。
     @Published var similarPrompt: SimilarPrompt?
+    /// 当前候选池解析所基于的 storefront（区）。建歌单前用它与已连账户的 storefront 比对：
+    /// 不一致说明 catalog id 跨区、可能对不上 → 提示重搜（对齐 web 的 builtStorefront 校验）。
+    @Published private(set) var builtStorefront: String = ""
 
     /// 被删除的一行 + 它原来的位置/勾选态，用于精确撤销还原。
     struct RemovedItem { let item: PlaylistItem; let index: Int; let wasSelected: Bool }
@@ -33,8 +36,9 @@ final class PlaylistStore: ObservableObject {
     var orderedSongs: [Song] { items.map { $0.song } }
 
     /// 首次推荐：建池 + 按 rank 排序，全部标 new，清空选择。
-    func setRecommendation(_ songs: [Song], rank: RankResult) {
+    func setRecommendation(_ songs: [Song], rank: RankResult, storefront: String = "") {
         pool = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        builtStorefront = storefront
         playlistName = rank.playlistName
         playlistDescription = rank.description
         selected = []
@@ -44,10 +48,11 @@ final class PlaylistStore: ObservableObject {
     }
 
     /// 微调/重搜：可选替换池；覆盖列表；保留仍在的勾选；提示被移出的勾选。
-    func applyRefinement(_ rank: RankResult, songs: [Song]? = nil) {
+    func applyRefinement(_ rank: RankResult, songs: [Song]? = nil, storefront: String? = nil) {
         let previousIds = Set(items.map { $0.id })
         if let songs {
             pool = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            if let storefront { builtStorefront = storefront }
         }
         if !rank.playlistName.isEmpty { playlistName = rank.playlistName }
         if !rank.description.isEmpty { playlistDescription = rank.description }
@@ -117,6 +122,7 @@ final class PlaylistStore: ObservableObject {
         pool = [:]; items = []; selected = []
         playlistName = ""; playlistDescription = ""; notice = ""
         lastRemoved = nil; similarPrompt = nil
+        builtStorefront = ""
     }
 
     /// 按 rank.songs 顺序构造 items（id 必须在 pool 中，池外 id 丢弃 = 黄金原则），标 new/kept。

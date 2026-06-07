@@ -15,6 +15,9 @@ final class MusicAuthStore: ObservableObject {
 
     private let music: MusicService
     private var bag = Set<AnyCancellable>()
+    /// 用户在 App 内主动「断开」(切回 30s 试听)。会话内有效、不持久——避免回前台
+    /// refresh() 因系统仍授权而把状态重置回「已连」。重启 App 后回到系统授权态。
+    private var userDisengaged = false
 
     init(music: MusicService) {
         self.music = music
@@ -24,6 +27,7 @@ final class MusicAuthStore: ObservableObject {
 
     /// 连接：请求授权 → 取真实 storefront + 订阅能力。
     func connect() async {
+        userDisengaged = false
         connecting = true
         error = ""
         let status = await music.requestAuthorization()
@@ -38,8 +42,13 @@ final class MusicAuthStore: ObservableObject {
     }
 
     func disconnect() async {
+        userDisengaged = true
         authorized = false
         canPlayFull = false
+        // 切回试听模式：停掉正在进行的完整播放（对齐 web 断开即停完整播放）。
+        music.pause()
+        fullCurrentId = ""
+        fullIsPlaying = false
     }
 
     /// 完整播放（订阅用户）。**在 await 前**乐观标记 fullCurrentId/fullIsPlaying —— 不依赖
@@ -82,7 +91,7 @@ final class MusicAuthStore: ObservableObject {
     /// 启动/回前台：若已授权就恢复 storefront + 完整播放能力。修复「重开 App 后
     /// canPlayFull 丢失、订阅用户看不到『完整』按钮」的问题（init 只恢复了 authorized）。
     func refresh() async {
-        guard music.authorizationStatus == .authorized else { return }
+        guard !userDisengaged, music.authorizationStatus == .authorized else { return }
         authorized = true
         if let sf = try? await music.currentStorefront() { storefront = sf }
         canPlayFull = await music.canPlayCatalogContent()

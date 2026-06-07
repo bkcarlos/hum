@@ -88,7 +88,7 @@ final class RecommendationCoordinator: ObservableObject {
             stage = "智能排序…"
             let rank = try await api.rank(llm.body, auth: auth, intent: s.intent,
                                           candidates: s.candidates.map(Candidate.init(song:)))
-            playlist.setRecommendation(s.candidates, rank: rank)
+            playlist.setRecommendation(s.candidates, rank: rank, storefront: s.storefront)
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("为你挑了 \(playlist.items.count) 首：「\(playlist.playlistName)」。试听、勾选后可一键建歌单。")
             end()
@@ -122,7 +122,7 @@ final class RecommendationCoordinator: ObservableObject {
             stage = "智能排序…"
             let rank = try await api.rank(llm.body, auth: auth, intent: convo.intent,
                                           candidates: s.candidates.map(Candidate.init(song:)))
-            playlist.applyRefinement(rank, songs: s.candidates)
+            playlist.applyRefinement(rank, songs: s.candidates, storefront: s.storefront)
             preview.setQueue(playlist.orderedSongs)
             convo.addAssistant("已按编辑后的条件重新挑选。")
             end()
