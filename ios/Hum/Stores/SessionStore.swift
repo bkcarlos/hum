@@ -13,17 +13,24 @@ final class SessionStore: ObservableObject {
     @Published var mode: Mode { didSet { defaults.set(mode.rawValue, forKey: K.mode) } }
     @Published private(set) var session: String
     @Published private(set) var email: String
+    @Published private(set) var name: String   // Apple 名字，仅首登返回，持久化
     @Published private(set) var sub: String
     @Published var loggingIn: Bool = false
     @Published var loginError: String = ""
 
     var signedIn: Bool { !session.isEmpty }
+    /// 展示名：优先 Apple 名字，否则邮箱 @ 前的本地部分（隐去后缀）。
+    var displayName: String {
+        if !name.isEmpty { return name }
+        return email.split(separator: "@").first.map(String.init) ?? ""
+    }
 
     private let api: APIClient
     private let defaults = UserDefaults.standard
     private enum K {
         static let mode = "hum.authMode"
         static let email = "hum.session.email"
+        static let name = "hum.session.name"
     }
     private static let sessionAccount = "session"
 
@@ -31,6 +38,7 @@ final class SessionStore: ObservableObject {
         self.api = api
         session = KeychainStore.load(account: SessionStore.sessionAccount)
         email = defaults.string(forKey: K.email) ?? ""
+        name = defaults.string(forKey: K.name) ?? ""
         sub = ""
         // 默认模式：已存模式优先；否则新装默认免费档，但已配置 BYOK key 的老用户保持
         // BYOK（不被推到登录墙，贯彻 web 的「不打扰已配置用户」）。
@@ -42,8 +50,9 @@ final class SessionStore: ObservableObject {
     }
 
     /// 原生 Sign in with Apple 完成后调用：identityToken → 会话令牌 → 拉 me（best-effort
-    /// 取 email/sub）→ 落地 + 切到免费档。对应 useAppleLogin.login 的后半段。
-    func completeSignIn(identityToken: String) async {
+    /// 取 email/sub）→ 落地 + 切到免费档。`fullName` 仅首登有值（Apple 之后不再给），
+    /// 本次没给则保留已存名字。
+    func completeSignIn(identityToken: String, fullName: String) async {
         guard !loggingIn else { return }
         loggingIn = true
         loginError = ""
@@ -56,7 +65,7 @@ final class SessionStore: ObservableObject {
                 who = me.sub
                 mail = me.email
             }
-            setSession(result.session, sub: who, email: mail)
+            setSession(result.session, sub: who, email: mail, name: fullName.isEmpty ? name : fullName)
             mode = .free
             AppLog.shared.info("auth", "Apple 登录成功（\(mail.isEmpty ? "未取到邮箱" : "已取邮箱")）")
         } catch let e as APIError {
@@ -69,25 +78,24 @@ final class SessionStore: ObservableObject {
         loggingIn = false
     }
 
-    /// 退出免费档登录：清会话 + 邮箱（不动 BYOK key）。
+    /// 退出免费档登录：清会话 + 邮箱 + 名字（不动 BYOK key）。
     func signOut() {
-        setSession("", sub: "", email: "")
+        setSession("", sub: "", email: "", name: "")
     }
 
-    private func setSession(_ token: String, sub who: String, email mail: String) {
+    private func setSession(_ token: String, sub who: String, email mail: String, name nm: String) {
         session = token
         sub = who
         email = mail
+        name = nm
         if token.isEmpty {
             KeychainStore.delete(account: SessionStore.sessionAccount)
             defaults.removeObject(forKey: K.email)
+            defaults.removeObject(forKey: K.name)
         } else {
             KeychainStore.save(token, account: SessionStore.sessionAccount)
-            if mail.isEmpty {
-                defaults.removeObject(forKey: K.email)
-            } else {
-                defaults.set(mail, forKey: K.email)
-            }
+            if mail.isEmpty { defaults.removeObject(forKey: K.email) } else { defaults.set(mail, forKey: K.email) }
+            if nm.isEmpty { defaults.removeObject(forKey: K.name) } else { defaults.set(nm, forKey: K.name) }
         }
     }
 }

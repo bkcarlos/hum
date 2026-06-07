@@ -41,7 +41,7 @@ export function useAppleLogin() {
     loading.value = true
     error.value = ''
     try {
-      const idToken = await appleSignIn(webCfg.value)
+      const { idToken, name } = await appleSignIn(webCfg.value)
       const { session: tok } = await exchangeAppleToken(idToken)
       let sub = ''
       let email = ''
@@ -52,7 +52,7 @@ export function useAppleLogin() {
       } catch {
         /* sub/email are display-only */
       }
-      session.setSession(tok, sub, email)
+      session.setSession(tok, sub, email, name)
       session.setMode('free')
       if (!apple.authorized) await apple.connect()
     } catch (e) {

@@ -22,7 +22,7 @@ const { loading: appleLoading, available: appleAvailable, login: doAppleLogin, e
 onMounted(ensureConfig)
 
 const primaryLabel = computed(() => {
-  if (session.signedIn) return session.email ? `免费额度 · ${session.email}` : '免费额度 ✓'
+  if (session.signedIn) return session.displayName ? `免费额度 · ${session.displayName}` : '免费额度 ✓'
   if (session.mode === 'byok') return llm.configured ? '自带 Key ✓' : '配置自带 Key'
   return '用 Apple 登录 · 免费开始'
 })

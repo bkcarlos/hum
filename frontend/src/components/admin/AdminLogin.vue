@@ -40,7 +40,7 @@ async function onApple() {
   appleLoading.value = true
   error.value = ''
   try {
-    const idToken = await appleSignIn(webCfg.value)
+    const { idToken } = await appleSignIn(webCfg.value)
     const { session } = await exchangeAppleToken(idToken)
     await finishWithSession(session)
   } catch (e) {

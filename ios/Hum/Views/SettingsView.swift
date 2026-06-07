@@ -74,11 +74,11 @@ struct SettingsView: View {
     @ViewBuilder private var freeSection: some View {
         if session.signedIn {
             Section {
-                if !session.email.isEmpty {
+                if !session.displayName.isEmpty {
                     HStack {
-                        Text("Apple ID")
+                        Text("账户")
                         Spacer()
-                        Text(session.email).foregroundStyle(.secondary).lineLimit(1)
+                        Text(session.displayName).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Button("退出登录", role: .destructive) { session.signOut() }

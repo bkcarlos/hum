@@ -156,7 +156,7 @@ onMounted(ensureConfig)
       <div v-if="session.mode === 'free'">
         <div v-if="session.signedIn" class="signed-in">
           <n-space vertical :size="10">
-            <n-text>已登录：<b>{{ session.email || session.sub || 'Apple 账号' }}</b></n-text>
+            <n-text>已登录：<b>{{ session.displayName || 'Apple 账号' }}</b></n-text>
             <n-text depth="3" style="font-size: 12px">
               正在使用免费额度（服务端共享 Key，按每日配额）。额度用尽会提示你改用自带 Key。
             </n-text>

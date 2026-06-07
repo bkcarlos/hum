@@ -16,7 +16,7 @@ struct AccessCTAView: View {
             case .free:
                 if session.signedIn {
                     statusRow(icon: "checkmark.circle.fill",
-                              text: "免费额度" + (session.email.isEmpty ? "" : " · \(session.email)"))
+                              text: "免费额度" + (session.displayName.isEmpty ? "" : " · \(session.displayName)"))
                 } else {
                     AppleSignInButton()
                     if session.loggingIn {

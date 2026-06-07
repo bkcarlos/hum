@@ -10,7 +10,7 @@ struct AppleSignInButton: View {
 
     var body: some View {
         SignInWithAppleButton(.signIn) { request in
-            request.requestedScopes = [.email]
+            request.requestedScopes = [.fullName, .email]
         } onCompletion: { result in
             switch result {
             case .success(let auth):
@@ -23,8 +23,11 @@ struct AppleSignInButton: View {
                     Task { @MainActor in session.loginError = "未能取得 Apple 身份令牌，请重试。" }
                     return
                 }
+                // 名字仅首登返回（Apple 之后不再给）；拼好传给 SessionStore 存起来。
+                let fullName = [cred.fullName?.givenName, cred.fullName?.familyName]
+                    .compactMap { $0 }.joined(separator: " ")
                 AppLog.shared.info("auth", "已取得 Apple identityToken，换取会话中…")
-                Task { await session.completeSignIn(identityToken: token) }
+                Task { await session.completeSignIn(identityToken: token, fullName: fullName) }
             case .failure(let error):
                 // 用户主动取消不算错误，静默忽略。
                 if let e = error as? ASAuthorizationError, e.code == .canceled {

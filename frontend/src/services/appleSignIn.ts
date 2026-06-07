@@ -30,15 +30,22 @@ export interface AppleWebConfig {
   scope: string
 }
 
+export interface AppleSignInResult {
+  idToken: string
+  /** Apple 全名 —— 仅在「首次授权」那一次返回，之后为空串。 */
+  name: string
+}
+
 /** True when the user dismissed the Apple popup (so callers can stay silent). */
 export function isAppleCancel(e: unknown): boolean {
   const err = (e as { error?: string })?.error
   return err === 'popup_closed_by_user' || err === 'user_cancelled_authorize' || err === 'user_trigger_new_signin_flow'
 }
 
-/** Runs the Sign in with Apple popup and resolves the Apple identity token
- *  (JWT). Throws on failure; use isAppleCancel() to detect a user dismissal. */
-export async function appleSignIn(cfg: AppleWebConfig): Promise<string> {
+/** Runs the Sign in with Apple popup and resolves the identity token (JWT) + the
+ *  user's name. The name is only present on the FIRST authorization (Apple won't
+ *  resend it); callers persist it. Throws on failure; use isAppleCancel() for dismissals. */
+export async function appleSignIn(cfg: AppleWebConfig): Promise<AppleSignInResult> {
   await loadSdk()
   const AppleID = (window as any).AppleID
   if (!AppleID?.auth) throw new Error('Apple 登录不可用。')
@@ -51,5 +58,7 @@ export async function appleSignIn(cfg: AppleWebConfig): Promise<string> {
   const res = await AppleID.auth.signIn()
   const idToken = res?.authorization?.id_token
   if (!idToken) throw new Error('Apple 未返回身份令牌。')
-  return idToken as string
+  const n = res?.user?.name
+  const name = [n?.firstName, n?.lastName].filter(Boolean).join(' ').trim()
+  return { idToken: idToken as string, name }
 }

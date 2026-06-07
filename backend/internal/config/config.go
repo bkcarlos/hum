@@ -116,7 +116,7 @@ func Load() (*Config, error) {
 		AppleWebRedirectURI: os.Getenv("APPLE_WEB_REDIRECT_URI"),
 		FreeTierEnabled:     envBool("FREE_TIER_ENABLED", true),
 		FreeTierPerUser:     envInt("FREE_TIER_PER_USER_DAILY", 20),
-		FreeTierGlobal:      envInt("FREE_TIER_GLOBAL_DAILY", 0),
+		FreeTierGlobal:      envInt("FREE_TIER_GLOBAL_DAILY", 500),
 		FirestoreProject:    os.Getenv("FIRESTORE_PROJECT"),
 		AdminAppleSubs:      splitCSV(os.Getenv("ADMIN_APPLE_SUBS")),
 	}

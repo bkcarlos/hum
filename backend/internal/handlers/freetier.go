@@ -68,7 +68,7 @@ func (h *Handlers) AppleWebConfig(c *gin.Context) {
 		"enabled":     true,
 		"clientId":    h.cfg.AppleWebClientID,
 		"redirectUri": h.cfg.AppleWebRedirectURI,
-		"scope":       "email", // ask for email so we can show it instead of the opaque sub
+		"scope":       "name email", // name(首登一次性) + email：客户端据此显示用户名
 	})
 }
 
