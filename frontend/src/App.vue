@@ -17,13 +17,10 @@ const llm = useLlmConfigStore()
 const session = useSessionStore()
 const playlist = usePlaylistStore()
 
-// Topbar access: ONE primary CTA for the common path (免费 Apple 登录), with BYOK
-// demoted to a small secondary link. The primary reflects the current setup.
+// Topbar access（顶栏不分模式）：已接入(免费已登录 或 BYOK 已配置) → 账户胶囊；
+// 未接入 → Apple 登录按钮 + 「自带 Key」入口。模式选择只在「接入设置」弹窗里。
 const { loading: appleLoading, available: appleAvailable, login: doAppleLogin, ensureConfig } = useAppleLogin()
 onMounted(ensureConfig)
-
-// The non-active path, shown as a subtle link.
-const secondaryLabel = computed(() => (session.mode === 'byok' ? '用免费额度' : '自带 Key'))
 
 // Responsive degradation (must-do): narrow screens drop the side-by-side layout
 // for tabs (对话 / 歌单) — never two panes squeezed on mobile.
@@ -42,53 +39,34 @@ watch(
 
 const showConfig = ref(false)
 
+// Apple 登录入口（始终走免费档 Apple 登录；服务端没配 web 登录则回退到弹窗）。
 async function onPrimary() {
-  if (session.signedIn || session.mode === 'byok') {
-    showConfig.value = true // already set up → open settings to manage
-    return
-  }
-  // Fresh + free: log in directly (one click); fall back to the dialog if web
-  // Apple login isn't configured server-side.
   session.setMode('free')
   if (appleAvailable.value) await doAppleLogin()
   else showConfig.value = true
 }
-function onSecondary() {
-  session.setMode(session.mode === 'byok' ? 'free' : 'byok')
+// 「自带 Key」入口 → 打开接入设置（在弹窗里配置/切换，不在顶栏暴露模式）。
+function onByok() {
+  session.setMode('byok')
   showConfig.value = true
 }
 
-// Once an identity is active (signed in, or BYOK configured), collapse the access
-// controls into one account chip + dropdown (a proper「我的」menu) instead of the
-// button-and-link row.
-// 按「当前模式」判断（不是 signedIn）：切到 BYOK 后即便免费会话还在，也按 BYOK 展示。
-const hasIdentity = computed(() => (session.mode === 'free' ? session.signedIn : llm.configured))
-const accountName = computed(() => (session.mode === 'byok' ? '自带 Key' : session.displayName || 'Apple 账号'))
+// 已接入(免费已登录 或 BYOK 已配置) → 账户胶囊；不分模式：只显示账户，不显示模式字样。
+const ready = computed(() => session.signedIn || llm.configured)
+const accountName = computed(() => (session.signedIn ? session.displayName || 'Apple 账号' : '已接入'))
 const avatarInitial = computed(() => (accountName.value.trim()[0] || '·').toUpperCase())
 const accountMenu = computed<DropdownOption[]>(() =>
-  session.mode === 'free'
+  session.signedIn
     ? [
         { label: '接入设置', key: 'settings' },
-        { label: '改用自带 Key', key: 'byok' },
         { type: 'divider', key: 'd' },
         { label: '退出登录', key: 'signout' },
       ]
-    : [
-        { label: '接入设置', key: 'settings' },
-        { label: '改用免费额度', key: 'free' },
-      ],
+    : [{ label: '接入设置', key: 'settings' }],
 )
 function onAccountSelect(key: string) {
   if (key === 'settings') showConfig.value = true
-  else if (key === 'byok') {
-    session.setMode('byok')
-    showConfig.value = true
-  } else if (key === 'free') {
-    session.setMode('free')
-    showConfig.value = true
-  } else if (key === 'signout') {
-    session.signOut()
-  }
+  else if (key === 'signout') session.signOut()
 }
 
 const themeOverrides: GlobalThemeOverrides = {
@@ -114,7 +92,7 @@ const themeOverrides: GlobalThemeOverrides = {
         </div>
         <div class="actions">
           <AppleConnect />
-          <n-dropdown v-if="hasIdentity" trigger="click" :options="accountMenu" @select="onAccountSelect">
+          <n-dropdown v-if="ready" trigger="click" :options="accountMenu" @select="onAccountSelect">
             <button type="button" class="account-chip">
               <span class="avatar">{{ avatarInitial }}</span>
               <span class="chip-name">{{ accountName }}</span>
@@ -122,10 +100,9 @@ const themeOverrides: GlobalThemeOverrides = {
             </button>
           </n-dropdown>
           <template v-else>
-            <!-- 未登录·免费档 → Apple 官方黑色登录按钮；BYOK 未配置 → 普通配置按钮 -->
-            <AppleSignInButton v-if="session.mode === 'free'" :loading="appleLoading" @click="onPrimary" />
-            <n-button v-else type="primary" size="small" @click="onPrimary">配置自带 Key</n-button>
-            <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
+            <!-- 未接入：Apple 官方黑色登录按钮 + 「自带 Key」入口（顶栏不分模式） -->
+            <AppleSignInButton :loading="appleLoading" @click="onPrimary" />
+            <n-button text size="small" class="alt-link" @click="onByok">自带 Key</n-button>
           </template>
         </div>
       </header>
