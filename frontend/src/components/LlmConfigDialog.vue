@@ -18,6 +18,7 @@ import {
 import { PROVIDER_PRESETS, presetById } from '@/data/providers'
 import { useLlmConfigStore } from '@/stores/llmConfig'
 import { useSessionStore } from '@/stores/session'
+import { useAppleStore } from '@/stores/apple'
 import { testLlm, listModels, getAppleWebConfig, exchangeAppleToken, getMe } from '@/api/client'
 import { appleSignIn, isAppleCancel, type AppleWebConfig } from '@/services/appleSignIn'
 import type { ApiError, ModelInfo } from '@/types'
@@ -31,6 +32,7 @@ const visible = computed({
 
 const llm = useLlmConfigStore()
 const session = useSessionStore()
+const apple = useAppleStore()
 
 // ── Free tier (Sign in with Apple) ────────────────────────────────────
 const webCfg = ref<AppleWebConfig | null>(null)
@@ -54,6 +56,10 @@ async function onAppleLogin() {
       /* sub/email are just for display */
     }
     session.setSession(tok, sub, email)
+    // After login, also connect Apple Music (for full playback + building
+    // playlists). Best-effort: a non-subscriber / cancel doesn't undo the login,
+    // and we skip it if already connected so we don't re-prompt.
+    if (!apple.authorized) await apple.connect()
   } catch (e) {
     if (!isAppleCancel(e)) freeErr.value = (e as ApiError).message || (e as Error).message || 'Apple 登录失败，请重试。'
   } finally {
