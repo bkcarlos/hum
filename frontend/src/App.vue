@@ -22,16 +22,6 @@ const playlist = usePlaylistStore()
 const { loading: appleLoading, available: appleAvailable, login: doAppleLogin, ensureConfig } = useAppleLogin()
 onMounted(ensureConfig)
 
-const primaryLabel = computed(() => {
-  if (session.signedIn) return session.displayName ? `免费额度 · ${session.displayName}` : '免费额度 ✓'
-  if (session.mode === 'byok') return llm.configured ? '自带 Key ✓' : '配置自带 Key'
-  return '用 Apple 登录 · 免费开始'
-})
-const primaryType = computed<'primary' | 'default'>(() => {
-  if (session.signedIn) return 'default'
-  if (session.mode === 'byok') return llm.configured ? 'default' : 'primary'
-  return 'primary'
-})
 // The non-active path, shown as a subtle link.
 const secondaryLabel = computed(() => (session.mode === 'byok' ? '用免费额度' : '自带 Key'))
 
@@ -71,12 +61,12 @@ function onSecondary() {
 // Once an identity is active (signed in, or BYOK configured), collapse the access
 // controls into one account chip + dropdown (a proper「我的」menu) instead of the
 // button-and-link row.
-const hasIdentity = computed(() => session.signedIn || (session.mode === 'byok' && llm.configured))
-const accountName = computed(() => (session.signedIn ? session.displayName || 'Apple 账号' : '自带 Key'))
-const accountSub = computed(() => (session.signedIn ? '免费额度' : '已配置'))
+// 按「当前模式」判断（不是 signedIn）：切到 BYOK 后即便免费会话还在，也按 BYOK 展示。
+const hasIdentity = computed(() => (session.mode === 'free' ? session.signedIn : llm.configured))
+const accountName = computed(() => (session.mode === 'byok' ? '自带 Key' : session.displayName || 'Apple 账号'))
 const avatarInitial = computed(() => (accountName.value.trim()[0] || '·').toUpperCase())
 const accountMenu = computed<DropdownOption[]>(() =>
-  session.signedIn
+  session.mode === 'free'
     ? [
         { label: '接入设置', key: 'settings' },
         { label: '改用自带 Key', key: 'byok' },
@@ -127,19 +117,14 @@ const themeOverrides: GlobalThemeOverrides = {
           <n-dropdown v-if="hasIdentity" trigger="click" :options="accountMenu" @select="onAccountSelect">
             <button type="button" class="account-chip">
               <span class="avatar">{{ avatarInitial }}</span>
-              <span class="chip-text">
-                <span class="chip-name">{{ accountName }}</span>
-                <span class="chip-sub">{{ accountSub }}</span>
-              </span>
+              <span class="chip-name">{{ accountName }}</span>
               <span class="chev">▾</span>
             </button>
           </n-dropdown>
           <template v-else>
             <!-- 未登录·免费档 → Apple 官方黑色登录按钮；BYOK 未配置 → 普通配置按钮 -->
             <AppleSignInButton v-if="session.mode === 'free'" :loading="appleLoading" @click="onPrimary" />
-            <n-button v-else :type="primaryType" size="small" @click="onPrimary">
-              <span class="acc-label">{{ primaryLabel }}</span>
-            </n-button>
+            <n-button v-else type="primary" size="small" @click="onPrimary">配置自带 Key</n-button>
             <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
           </template>
         </div>
@@ -258,24 +243,14 @@ const themeOverrides: GlobalThemeOverrides = {
   align-items: center;
   justify-content: center;
 }
-.chip-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  text-align: left;
-  max-width: 160px;
-}
 .chip-name {
   font-size: 13px;
   font-weight: 600;
   color: #1d1d1f;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.chip-sub {
-  font-size: 10px;
-  color: #98989d;
 }
 .chev {
   font-size: 10px;
