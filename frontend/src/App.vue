@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { NConfigProvider, NButton, NDropdown, NTabs, NTabPane, NBadge, zhCN, dateZhCN } from 'naive-ui'
 import type { DropdownOption, GlobalThemeOverrides } from 'naive-ui'
 import AppleConnect from '@/components/AppleConnect.vue'
+import AppleSignInButton from '@/components/AppleSignInButton.vue'
 import LlmConfigDialog from '@/components/LlmConfigDialog.vue'
 import ConversationPane from '@/components/ConversationPane.vue'
 import PlaylistPane from '@/components/PlaylistPane.vue'
@@ -134,7 +135,9 @@ const themeOverrides: GlobalThemeOverrides = {
             </button>
           </n-dropdown>
           <template v-else>
-            <n-button :type="primaryType" size="small" :loading="appleLoading" @click="onPrimary">
+            <!-- 未登录·免费档 → Apple 官方黑色登录按钮；BYOK 未配置 → 普通配置按钮 -->
+            <AppleSignInButton v-if="session.mode === 'free'" :loading="appleLoading" @click="onPrimary" />
+            <n-button v-else :type="primaryType" size="small" @click="onPrimary">
               <span class="acc-label">{{ primaryLabel }}</span>
             </n-button>
             <n-button text size="small" class="alt-link" @click="onSecondary">{{ secondaryLabel }}</n-button>
