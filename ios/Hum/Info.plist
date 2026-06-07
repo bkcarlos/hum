@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>HUMApiBase</key>
 	<string>$(HUM_API_BASE)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>Hum 需要访问 Apple Music 来试听、完整播放并把你勾选的歌曲建成歌单。</string>
 	<key>UIBackgroundModes</key>
