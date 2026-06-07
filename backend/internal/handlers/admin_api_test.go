@@ -182,6 +182,31 @@ func TestAdminConfig_LLMKeyWriteOnlyAndMasked(t *testing.T) {
 	}
 }
 
+func TestAdminTestLLM(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer up.Close()
+	h, hdr := adminSession(t)
+	ctx := context.Background()
+	cfg, _ := h.quota.GetConfig(ctx)
+	cfg.LLMProvider, cfg.LLMBaseURL, cfg.LLMModel, cfg.LLMAPIKey = "openai-compat", up.URL, "m", "k"
+	_ = h.quota.SetConfig(ctx, cfg)
+	r := adminRouter(h)
+
+	// Valid config → Ping succeeds → 200.
+	if w := do(r, http.MethodPost, "/api/admin/test", hdr, nil); w.Code != http.StatusOK {
+		t.Fatalf("valid config: want 200, got %d %s", w.Code, w.Body.String())
+	}
+
+	// Empty model → 400 (caught before pinging).
+	cfg.LLMModel = ""
+	_ = h.quota.SetConfig(ctx, cfg)
+	if w := do(r, http.MethodPost, "/api/admin/test", hdr, nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("no model: want 400, got %d", w.Code)
+	}
+}
+
 func TestEmail_InMeAndUsage(t *testing.T) {
 	h, hdr := adminSession(t) // admin "admin-1"
 	ctx := context.Background()

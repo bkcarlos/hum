@@ -12,7 +12,7 @@ import {
   NSwitch,
   useMessage,
 } from 'naive-ui'
-import { getAdminConfig, updateAdminConfig } from '@/api/client'
+import { getAdminConfig, updateAdminConfig, testAdminLLM } from '@/api/client'
 import { useAdminStore } from '@/stores/admin'
 import type { ApiError, ProviderType, QuotaConfig } from '@/types'
 
@@ -23,6 +23,9 @@ const loading = ref(true)
 const saving = ref(false)
 const cfg = ref<QuotaConfig | null>(null)
 const newKey = ref('') // typed-but-unsaved server LLM key; blank = leave unchanged
+const testing = ref(false)
+const testOk = ref<boolean | null>(null)
+const testMsg = ref('')
 
 const providerOptions: { label: string; value: ProviderType }[] = [
   { label: 'OpenAI 兼容（openai-compat）', value: 'openai-compat' },
@@ -56,6 +59,28 @@ async function save() {
     message.error((e as ApiError).message)
   } finally {
     saving.value = false
+  }
+}
+
+// Save the current form (incl. a newly-typed key) then ping the LLM, so we test
+// exactly what's shown.
+async function onTest() {
+  if (!cfg.value) return
+  testing.value = true
+  testOk.value = null
+  try {
+    const patch: Partial<QuotaConfig> & { llmApiKey?: string } = { ...cfg.value }
+    if (newKey.value.trim()) patch.llmApiKey = newKey.value.trim()
+    cfg.value = await updateAdminConfig(admin.session, patch)
+    newKey.value = ''
+    await testAdminLLM(admin.session)
+    testOk.value = true
+    testMsg.value = '连接成功，默认 LLM 可用。'
+  } catch (e) {
+    testOk.value = false
+    testMsg.value = (e as ApiError).message
+  } finally {
+    testing.value = false
   }
 }
 
@@ -117,6 +142,14 @@ onMounted(load)
               />
               <n-text depth="3" style="font-size: 12px">
                 服务端自有 key,存于后端、不会回显;留空保持不变。也可改用 Cloud Run Secret。
+              </n-text>
+            </n-space>
+          </n-form-item>
+          <n-form-item label="连通性">
+            <n-space align="center" :size="10">
+              <n-button size="small" :loading="testing" @click="onTest">保存并测试</n-button>
+              <n-text v-if="testOk !== null" :type="testOk ? 'success' : 'error'" style="font-size: 12px">
+                {{ testMsg }}
               </n-text>
             </n-space>
           </n-form-item>

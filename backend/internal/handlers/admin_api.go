@@ -110,6 +110,45 @@ func (h *Handlers) AdminUpdateConfig(c *gin.Context) {
 	httpx.OK(c, configView(cfg))
 }
 
+// AdminTestLLM (POST /api/admin/test) pings the LLM using the LIVE free-tier
+// config (admin-set key, else env key, + provider/baseUrl/model) so the operator
+// can verify the default LLM works — without the key ever leaving the server.
+func (h *Handlers) AdminTestLLM(c *gin.Context) {
+	cfg, err := h.quota.GetConfig(c.Request.Context())
+	if err != nil {
+		httpx.Fail(c, http.StatusInternalServerError, "quota_error", "读取配额配置失败。")
+		return
+	}
+	key := cfg.LLMAPIKey
+	if key == "" {
+		key = h.cfg.DefaultLLMKey
+	}
+	if key == "" {
+		httpx.Fail(c, http.StatusBadRequest, "no_key", "未配置 LLM Key，请先填写并保存。")
+		return
+	}
+	if strings.TrimSpace(cfg.LLMModel) == "" {
+		httpx.Fail(c, http.StatusBadRequest, "bad_request", "未配置模型名（Model）。")
+		return
+	}
+	p, err := llm.New(llm.Config{
+		Provider: llm.ProviderType(cfg.LLMProvider),
+		BaseURL:  cfg.LLMBaseURL,
+		Model:    cfg.LLMModel,
+		APIKey:   key,
+		Timeout:  h.cfg.UpstreamHTTPTimeout,
+	})
+	if err != nil {
+		httpx.Fail(c, http.StatusBadRequest, "config", err.Error())
+		return
+	}
+	if err := p.Ping(c.Request.Context()); err != nil {
+		writeLLMError(c, err)
+		return
+	}
+	httpx.OK(c, gin.H{"ok": true})
+}
+
 // AdminUsage (GET /api/admin/usage?day=YYYY-MM-DD) returns the day's global
 // metered count + per-user usage (with ban flags), sorted by usage desc. `day`
 // defaults to today (UTC).

@@ -150,6 +150,7 @@ func main() {
 			admin.GET("/me", h.AdminMe) // gate canary the admin UI hits on load
 			admin.GET("/config", h.AdminGetConfig)
 			admin.POST("/config", h.AdminUpdateConfig) // POST (not PUT): GET/POST-only API
+			admin.POST("/test", h.AdminTestLLM)        // ping the default LLM (server-side)
 			admin.GET("/usage", h.AdminUsage)
 			admin.POST("/users/:sub/ban", h.AdminBan)
 			admin.POST("/users/:sub/unban", h.AdminUnban)

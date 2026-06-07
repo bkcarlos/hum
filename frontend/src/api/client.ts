@@ -162,6 +162,12 @@ export function updateAdminConfig(
   return http.post('/admin/config', patch, bearer(session))
 }
 
+/** Ping the default LLM using the SAVED server config (key never leaves the
+ *  server). Resolves on success; rejects with the normalized LLM error. */
+export function testAdminLLM(session: string): Promise<{ ok: boolean }> {
+  return http.post('/admin/test', null, bearer(session))
+}
+
 export function getAdminUsage(session: string, day?: string): Promise<AdminUsage> {
   return http.get('/admin/usage', { ...bearer(session), params: day ? { day } : undefined })
 }
