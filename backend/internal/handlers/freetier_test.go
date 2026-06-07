@@ -228,3 +228,26 @@ func TestAppleWebConfig(t *testing.T) {
 		t.Fatalf("on: %+v", onBody.Data)
 	}
 }
+
+func TestFreeTier_NoServerLLMKeyDeniesFreeRecs(t *testing.T) {
+	// Identity wired but no server LLM key → a logged-in free-tier suggest is
+	// denied (free recs need the server key); login/admin stay available.
+	cfg := &config.Config{UpstreamHTTPTimeout: 5 * time.Second} // no DefaultLLMKey
+	store := quota.NewMemoryStore(quota.Config{Enabled: true, PerUserDailyLimit: 5})
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	verifier := &auth.AppleVerifier{
+		Audiences: []string{"com.test"},
+		Now:       func() time.Time { return time.Now() },
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+	}
+	secret := []byte("sess-secret")
+	h := New(cfg, nil, resolvesToOne()).WithFreeTier(store, verifier, secret)
+	r := freeRouter(h)
+	sess, _ := auth.IssueSession(secret, "u1", time.Hour, time.Now())
+	w := do(r, http.MethodPost, "/api/suggest",
+		map[string]string{"Authorization": "Bearer " + sess},
+		map[string]any{"storefront": "us", "text": "jazz"})
+	if w.Code != http.StatusBadRequest || errCode(w) != "no_key" {
+		t.Fatalf("free suggest w/o server LLM key: want 400 no_key, got %d %s", w.Code, errCode(w))
+	}
+}

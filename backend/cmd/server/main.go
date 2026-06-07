@@ -62,11 +62,13 @@ func main() {
 
 	h := handlers.New(cfg, tokens, apple)
 
-	// Free tier (Sign in with Apple + server default key under quota) is optional.
-	// Off unless DEFAULT_LLM_API_KEY / SESSION_SECRET / APPLE_BUNDLE_ID / model are
-	// set — then suggest/rank also accept a Bearer session metered by quota.
-	freeTierOn := false
-	if cfg.FreeTierConfigured() {
+	// Sign in with Apple identity (login + admin backstage) turns on as soon as
+	// SESSION_SECRET + APPLE_BUNDLE_ID are set — it does NOT need the server LLM
+	// key. The metered free-tier RECOMMENDATIONS additionally need DEFAULT_LLM_API
+	// _KEY + DEFAULT_LLM_MODEL (cfg.FreeTierConfigured); without them, login/admin
+	// still work and only suggest/rank's server-key path is unavailable.
+	authOn := false
+	if cfg.AuthConfigured() {
 		seed := quota.Config{
 			Enabled:           cfg.FreeTierEnabled,
 			PerUserDailyLimit: cfg.FreeTierPerUser,
@@ -82,21 +84,25 @@ func main() {
 			fs, ferr := quota.NewFirestoreStore(initCtx, cfg.FirestoreProject, seed)
 			cancel()
 			if ferr != nil {
-				slog.Error("free tier: Firestore init failed, falling back to in-memory", "err", ferr)
+				slog.Error("auth: Firestore init failed, falling back to in-memory", "err", ferr)
 				store = quota.NewMemoryStore(seed)
 			} else {
 				store = fs
-				slog.Info("free tier: using Firestore quota store", "project", cfg.FirestoreProject)
+				slog.Info("auth: using Firestore quota store", "project", cfg.FirestoreProject)
 			}
 		} else {
 			store = quota.NewMemoryStore(seed)
-			slog.Warn("free tier: using in-memory quota (single-instance; set FIRESTORE_PROJECT for prod)")
+			slog.Warn("auth: using in-memory quota (single-instance; set FIRESTORE_PROJECT for prod)")
 		}
 		h = h.WithFreeTier(store, auth.NewAppleVerifier(cfg.AppleAudiences(), cfg.UpstreamHTTPTimeout), []byte(cfg.SessionSecret))
-		freeTierOn = true
-		slog.Info("free tier enabled", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal, "seededAdmins", len(cfg.AdminAppleSubs))
+		authOn = true
+		if cfg.FreeTierConfigured() {
+			slog.Info("Apple login + admin + metered free-tier recommendations ENABLED", "perUserDaily", cfg.FreeTierPerUser, "globalDaily", cfg.FreeTierGlobal, "seededAdmins", len(cfg.AdminAppleSubs))
+		} else {
+			slog.Warn("Apple login + admin ENABLED, but free-tier recommendations are OFF — set DEFAULT_LLM_API_KEY + DEFAULT_LLM_MODEL to enable server-key recs", "seededAdmins", len(cfg.AdminAppleSubs))
+		}
 	} else {
-		slog.Info("free tier disabled — suggest/rank are BYOK-only (set DEFAULT_LLM_API_KEY/SESSION_SECRET/APPLE_BUNDLE_ID/DEFAULT_LLM_MODEL to enable)")
+		slog.Info("auth/admin/free-tier disabled — set SESSION_SECRET + APPLE_BUNDLE_ID for login+admin (and DEFAULT_LLM_API_KEY + DEFAULT_LLM_MODEL for free recs)")
 	}
 
 	r := gin.New()
@@ -130,8 +136,9 @@ func main() {
 		api.POST("/suggest", h.Suggest)   // Option A: LLM proposes songs → resolved against Apple
 		api.POST("/examples", h.Examples) // personalized empty-state example prompts
 
-		// Free tier: exchange a Sign in with Apple identity token for a session.
-		if freeTierOn {
+		// Sign in with Apple identity + admin backstage (decoupled from the LLM:
+		// these register whenever AuthConfigured, even if free recs are off).
+		if authOn {
 			api.POST("/auth/apple", h.AppleAuth)
 			api.GET("/auth/apple/web", h.AppleWebConfig) // web Apple-JS login config (public)
 			api.GET("/auth/me", h.Me)                    // who am I (+ isAdmin) — bootstrap + UI nav

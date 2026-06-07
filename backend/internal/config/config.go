@@ -123,12 +123,20 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// FreeTierConfigured reports whether the Sign in with Apple free tier can run:
-// it needs the server's own LLM key + model, a session secret, and the expected
-// Apple audience (bundle id). Missing any → suggest/rank stay BYOK-only.
+// AuthConfigured reports whether Sign in with Apple identity + sessions can run:
+// a session secret and the expected Apple audience (bundle id). This alone powers
+// login (/auth/*) and the admin backstage (/admin/*) — neither of which needs the
+// server's LLM key. Missing either → those routes aren't registered.
+func (c *Config) AuthConfigured() bool {
+	return c.SessionSecret != "" && c.AppleBundleID != ""
+}
+
+// FreeTierConfigured reports whether the metered free-tier RECOMMENDATIONS
+// (suggest/rank on the server's own key) can run: identity configured PLUS the
+// server LLM key + model. Login + admin work without this; only the server-key
+// recommendation path needs it. Missing → suggest/rank stay BYOK-only.
 func (c *Config) FreeTierConfigured() bool {
-	return c.DefaultLLMKey != "" && c.DefaultLLMModel != "" &&
-		c.SessionSecret != "" && c.AppleBundleID != ""
+	return c.AuthConfigured() && c.DefaultLLMKey != "" && c.DefaultLLMModel != ""
 }
 
 // AppleAudiences is the set of accepted Apple identity-token `aud` values: the

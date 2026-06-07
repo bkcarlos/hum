@@ -86,10 +86,12 @@ func (h *Handlers) resolveProvider(c *gin.Context, dto llmConfigDTO, requireMode
 		return p, noop, ok
 	}
 
-	// No key → free tier. Must be fully configured.
+	// No key → free tier. The metered free-tier path needs the SERVER LLM key; if
+	// it isn't configured, free recommendations are unavailable (login + admin can
+	// still be on — they're decoupled), so steer the user to BYOK.
 	if !h.freeTierReady() {
 		httpx.Fail(c, http.StatusBadRequest, "no_key",
-			"未配置 LLM API Key，请在「设置」中配置，或登录后使用免费额度。")
+			"免费额度暂未开放，请在「设置」中配置自带 Key。")
 		return nil, noop, false
 	}
 

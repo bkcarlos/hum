@@ -139,3 +139,26 @@ func TestAdmin_DisabledWhenFreeTierOff(t *testing.T) {
 		t.Fatalf("/admin/me off: want 503, got %d", w.Code)
 	}
 }
+
+func TestAdmin_WorksWithoutLLMKey(t *testing.T) {
+	// Identity wired (store + verifier + secret) but NO server LLM key: login +
+	// admin must still work — they're decoupled from the free-tier LLM config.
+	cfg := &config.Config{UpstreamHTTPTimeout: 5 * time.Second} // DefaultLLMKey empty
+	store := quota.NewMemoryStore(quota.Config{Enabled: true, PerUserDailyLimit: 5, Admins: []string{"admin-1"}})
+	key, _ := rsa.GenerateKey(rand.Reader, 2048)
+	verifier := &auth.AppleVerifier{
+		Audiences: []string{"com.test"},
+		Now:       time.Now,
+		KeyFunc:   func(*jwt.Token) (any, error) { return &key.PublicKey, nil },
+	}
+	secret := []byte("sess-secret")
+	h := New(cfg, nil, nil).WithFreeTier(store, verifier, secret)
+	r := adminRouter(h)
+	sess, _ := auth.IssueSession(secret, "admin-1", time.Hour, time.Now())
+
+	for _, path := range []string{"/api/auth/me", "/api/admin/me", "/api/admin/config"} {
+		if w := do(r, http.MethodGet, path, bearer(sess), nil); w.Code != http.StatusOK {
+			t.Fatalf("%s without LLM key: want 200, got %d %s", path, w.Code, errCode(w))
+		}
+	}
+}

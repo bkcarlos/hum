@@ -19,8 +19,8 @@ const adminSubKey = "adminSub"
 // admins allowlist). isAdmin is best-effort: returning sub reliably is what
 // matters here; the real access gate is AdminOnly, which fails closed.
 func (h *Handlers) Me(c *gin.Context) {
-	if !h.freeTierReady() {
-		httpx.Fail(c, http.StatusServiceUnavailable, "free_tier_unconfigured", "免费登录暂未开放。")
+	if !h.authReady() {
+		httpx.Fail(c, http.StatusServiceUnavailable, "free_tier_unconfigured", "登录暂未开放。")
 		return
 	}
 	sub, err := h.sessionSub(c)
@@ -42,7 +42,7 @@ func (h *Handlers) Me(c *gin.Context) {
 // without a restart. It fails closed: any store error denies access.
 func (h *Handlers) AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !h.freeTierReady() {
+		if !h.authReady() {
 			httpx.Fail(c, http.StatusServiceUnavailable, "free_tier_unconfigured", "管理功能暂未开放。")
 			c.Abort()
 			return

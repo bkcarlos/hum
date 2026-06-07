@@ -55,8 +55,15 @@ func (h *Handlers) WithFreeTier(store quota.Store, verifier *auth.AppleVerifier,
 	return h
 }
 
-// freeTierReady reports whether the free tier is fully wired (deps + server key).
+// authReady reports whether Sign in with Apple identity + the admin backstage are
+// wired (quota store + Apple verifier + session secret). These do NOT need the
+// server LLM key — login and admin are decoupled from the free-tier LLM config.
+func (h *Handlers) authReady() bool {
+	return h.quota != nil && h.appleAuth != nil && len(h.sessionSecret) > 0 && h.cfg != nil
+}
+
+// freeTierReady additionally requires the server's own LLM key — needed ONLY for
+// the metered free-tier recommendations (suggest/rank on the server key).
 func (h *Handlers) freeTierReady() bool {
-	return h.quota != nil && h.appleAuth != nil && len(h.sessionSecret) > 0 &&
-		h.cfg != nil && h.cfg.DefaultLLMKey != ""
+	return h.authReady() && h.cfg.DefaultLLMKey != ""
 }
