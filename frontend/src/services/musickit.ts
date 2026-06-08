@@ -68,8 +68,12 @@ const MK_PLAYING = 2 // MusicKit.PlaybackStates.playing
 /** Queue the given catalog song ids and start full-track playback at startIndex. */
 export async function playFullTracks(songIds: string[], startIndex = 0): Promise<void> {
   const mk = await ensureMusicKit()
-  await mk.setQueue({ songs: songIds, startPosition: Math.max(0, startIndex), startPlaying: false })
-  await mk.play()
+  // 用 songs(catalog id 数组) 建队列时 setQueue 的 startPosition 不生效（它只对 items
+  // 对象生效），会从第一首播。改为先建队列、再 changeToMediaAtIndex 跳到目标曲播放。
+  await mk.setQueue({ songs: songIds })
+  const i = Math.max(0, startIndex)
+  if (i > 0) await mk.changeToMediaAtIndex(i)
+  else await mk.play()
 }
 
 export async function skipNextFull(): Promise<void> {
