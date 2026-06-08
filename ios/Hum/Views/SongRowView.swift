@@ -77,8 +77,7 @@ struct SongRowView: View {
                 Task { await music.toggleFull() }
             } else {
                 preview.stop()   // 切完整前停掉 30s 试听
-                let idx = queue.firstIndex { $0.id == item.song.id } ?? 0
-                Task { await music.playFull(catalogIDs: queue.map(\.id), startAt: idx) }
+                Task { await music.playFull(catalogIDs: queue.map(\.id), startAt: item.song.id) }
             }
         } else {
             preview.toggle(item.song)

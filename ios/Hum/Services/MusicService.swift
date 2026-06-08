@@ -23,13 +23,15 @@ final class MusicService {
         return sub.canPlayCatalogContent
     }
 
-    /// 用 catalog id 完整播放（订阅用户），从 index 处开始。
-    func playFull(catalogIDs: [String], startAt index: Int = 0) async throws {
+    /// 用 catalog id 完整播放（订阅用户），从 startAtID 这首开始。
+    func playFull(catalogIDs: [String], startAtID: String) async throws {
         let songs = try await catalogSongs(for: catalogIDs)
         guard !songs.isEmpty else { return }
-        let startIndex = min(max(index, 0), songs.count - 1)
+        // 按点击曲的 catalog id 在解析结果里定位起始曲：即使有曲在本区解析不到、
+        // songs 比 catalogIDs 短，也不会像用原始 index 那样错位到邻近曲。
+        let start = songs.first { $0.id.rawValue == startAtID } ?? songs[0]
         let player = ApplicationMusicPlayer.shared
-        player.queue = ApplicationMusicPlayer.Queue(for: songs, startingAt: songs[startIndex])
+        player.queue = ApplicationMusicPlayer.Queue(for: songs, startingAt: start)
         try await player.play()
     }
 
