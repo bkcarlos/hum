@@ -49,12 +49,14 @@ final class MusicAuthStore: ObservableObject {
         userDisengaged = true
         authorized = false
         canPlayFull = false
-        // 切回试听模式：停掉正在进行的完整播放（对齐 web 断开即停完整播放）。
-        music.pause()
+        // 切回试听模式：用 stop 而非 pause——pause 会保留队列的 currentEntry，随后
+        // syncFull 在 .paused 时又把 fullCurrentId 设回，导致和试听行同时显示两条进度条。
+        music.stop()
         fullCurrentId = ""
         fullIsPlaying = false
         fullLoading = false
         fullProgress = 0
+        fullDuration = 0
     }
 
     /// 完整播放（订阅用户）。**在 await 前**乐观标记 fullCurrentId/fullIsPlaying —— 不依赖
@@ -140,6 +142,13 @@ final class MusicAuthStore: ObservableObject {
     }
 
     private func syncFull() {
+        // 已切回试听模式：别让暂停/停止中的完整播放器把 fullCurrentId 设回，
+        // 否则会和试听当前行同时显示两条进度条。
+        if userDisengaged {
+            fullCurrentId = ""
+            fullIsPlaying = false
+            return
+        }
         let p = ApplicationMusicPlayer.shared
         let status = p.state.playbackStatus
         fullIsPlaying = (status == .playing)

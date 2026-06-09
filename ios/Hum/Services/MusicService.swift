@@ -39,6 +39,11 @@ final class MusicService {
         ApplicationMusicPlayer.shared.pause()
     }
 
+    /// 停止并清队列（断开 Apple Music 切回试听时用，避免 paused 队列残留 currentEntry）。
+    func stop() {
+        ApplicationMusicPlayer.shared.stop()
+    }
+
     /// 建**私有**歌单（iOS 16 MusicLibrary）。返回 (id, 可选打开 URL)。
     func createPlaylist(name: String, description: String, catalogIDs: [String]) async throws -> (id: String, url: URL?) {
         let songs = try await catalogSongs(for: catalogIDs)
