@@ -12,11 +12,15 @@ import Combine
 final class PreviewPlayer: ObservableObject {
     @Published private(set) var currentId: String = ""
     @Published private(set) var isPlaying: Bool = false
+    @Published private(set) var loading: Bool = false // 点击后到出声 / 缓冲（非下载文件）
+    @Published private(set) var progress: Double = 0 // 当前播放位置（秒）
+    @Published private(set) var duration: Double = 0 // 预览时长（秒，约 30）
 
     private var queue: [Song] = []
     private var player: AVPlayer?
     private var endObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
+    private var timeObserver: Any?
 
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -63,11 +67,23 @@ final class PreviewPlayer: ObservableObject {
 
     func stop() {
         player?.pause()
+        removeTimeObserver()
         player = nil
         isPlaying = false
         currentId = ""
+        loading = false
+        progress = 0
+        duration = 0
         removeEndObserver()
         updateNowPlaying(for: nil)
+    }
+
+    /// 拖动进度条 seek 到 t 秒。
+    func seek(to t: Double) {
+        let clamped = max(0, t)
+        player?.seek(to: CMTime(seconds: clamped, preferredTimescale: 600))
+        progress = clamped
+        updateNowPlayingPlaybackState()
     }
 
     // MARK: - Private playback
@@ -76,10 +92,15 @@ final class PreviewPlayer: ObservableObject {
         guard song.hasPreview, let url = URL(string: song.previewUrl) else { return }
         player?.pause()
         removeEndObserver()
+        removeTimeObserver()
 
         let item = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: item)
         try? AVAudioSession.sharedInstance().setActive(true)
+        loading = true
+        progress = 0
+        duration = 0
+        addTimeObserver()
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
         ) { [weak self] _ in
@@ -110,6 +131,32 @@ final class PreviewPlayer: ObservableObject {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
         }
+    }
+
+    // MARK: - 进度 / 加载态（periodic time observer）
+
+    private func addTimeObserver() {
+        guard let player else { return }
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.4, preferredTimescale: 600), queue: .main
+        ) { [weak self] time in
+            let secs = CMTimeGetSeconds(time)
+            Task { @MainActor in self?.syncProgress(secs) }
+        }
+    }
+
+    private func removeTimeObserver() {
+        if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+        timeObserver = nil
+    }
+
+    /// 每 ~0.4s 同步播放位置/时长/缓冲态（缓冲中=正在等待数据，非下载文件）。
+    private func syncProgress(_ t: Double) {
+        progress = t.isFinite ? t : 0
+        if let d = player?.currentItem?.duration, d.isNumeric {
+            duration = CMTimeGetSeconds(d)
+        }
+        loading = (player?.timeControlStatus == .waitingToPlayAtSpecifiedRate)
     }
 
     // MARK: - 锁屏 / 控制中心 / AirPods（远程控制 + 正在播放信息）

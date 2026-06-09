@@ -12,9 +12,13 @@ final class MusicAuthStore: ObservableObject {
     @Published private(set) var canPlayFull: Bool = false
     @Published private(set) var fullCurrentId: String = ""   // 完整播放当前曲(catalog id)，空=没在完整播放
     @Published private(set) var fullIsPlaying: Bool = false
+    @Published private(set) var fullLoading: Bool = false     // 点击后到出声之间（非下载文件）
+    @Published private(set) var fullProgress: Double = 0      // 完整播放位置（秒）
+    @Published private(set) var fullDuration: Double = 0      // 当前曲时长（秒）
 
     private let music: MusicService
     private var bag = Set<AnyCancellable>()
+    private var progressTimer: Timer?
     /// 用户在 App 内主动「断开」(切回 30s 试听)。会话内有效、不持久——避免回前台
     /// refresh() 因系统仍授权而把状态重置回「已连」。重启 App 后回到系统授权态。
     private var userDisengaged = false
@@ -49,6 +53,8 @@ final class MusicAuthStore: ObservableObject {
         music.pause()
         fullCurrentId = ""
         fullIsPlaying = false
+        fullLoading = false
+        fullProgress = 0
     }
 
     /// 完整播放（订阅用户）。**在 await 前**乐观标记 fullCurrentId/fullIsPlaying —— 不依赖
@@ -58,18 +64,28 @@ final class MusicAuthStore: ObservableObject {
         guard !catalogIDs.isEmpty else { return }
         fullCurrentId = id    // 乐观：点的就是这首（不依赖解析后的 index）
         fullIsPlaying = true
+        fullLoading = true
+        fullProgress = 0
+        fullDuration = 0
         do {
             try await music.playFull(catalogIDs: catalogIDs, startAtID: id)
         } catch {
             self.error = "完整播放失败：\(error.localizedDescription)"
             fullCurrentId = ""
             fullIsPlaying = false
+            fullLoading = false
         }
     }
 
     func pauseFull() {
         music.pause()
         fullIsPlaying = false
+    }
+
+    /// 拖动进度条 seek 到 t 秒（完整播放）。
+    func seekFull(to t: Double) {
+        ApplicationMusicPlayer.shared.playbackTime = max(0, t)
+        fullProgress = max(0, t)
     }
 
     /// 完整播放暂停/续播（列表行点当前完整曲时用）。即时更新 fullIsPlaying，不等观察回调。
@@ -107,15 +123,31 @@ final class MusicAuthStore: ObservableObject {
         p.queue.objectWillChange
             .sink { [weak self] _ in Task { @MainActor in self?.syncFull() } }
             .store(in: &bag)
+        // ApplicationMusicPlayer 无 periodic time observer，用定时器轮询 playbackTime。
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.syncProgress() }
+        }
+    }
+
+    /// 定时同步完整播放位置（仅在放时）。
+    private func syncProgress() {
+        guard !fullCurrentId.isEmpty else { return }
+        let p = ApplicationMusicPlayer.shared
+        fullProgress = p.playbackTime
+        if case let .song(song)? = p.queue.currentEntry?.item, let d = song.duration {
+            fullDuration = d
+        }
     }
 
     private func syncFull() {
         let p = ApplicationMusicPlayer.shared
         let status = p.state.playbackStatus
         fullIsPlaying = (status == .playing)
+        if status == .playing { fullLoading = false }   // 出声了
         if status == .playing || status == .paused,
            case let .song(song)? = p.queue.currentEntry?.item {
             fullCurrentId = song.id.rawValue
+            if let d = song.duration { fullDuration = d }
         } else if status == .stopped {
             fullCurrentId = ""
         }
