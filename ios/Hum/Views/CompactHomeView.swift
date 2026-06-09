@@ -6,6 +6,7 @@ struct CompactHomeView: View {
     @EnvironmentObject private var convo: ConversationStore
     @EnvironmentObject private var playlist: PlaylistStore
     @EnvironmentObject private var preview: PreviewPlayer
+    @EnvironmentObject private var music: MusicAuthStore
     @EnvironmentObject private var reco: RecommendationCoordinator
     @EnvironmentObject private var llm: LLMConfigStore
     @EnvironmentObject private var ui: UIState
@@ -14,6 +15,33 @@ struct CompactHomeView: View {
     @State private var seeds = ""
     @State private var examples: [String] = []
     @State private var showConversation = false
+    @State private var visibleIds: Set<String> = []
+
+    /// 当前在放的曲（完整优先），用于「回到正在播放」。
+    private var nowPlayingId: String? {
+        if !music.fullCurrentId.isEmpty { return music.fullCurrentId }
+        if !preview.currentId.isEmpty { return preview.currentId }
+        return nil
+    }
+
+    /// 当前播放行滚出视野时浮现「正在播放」胶囊，点一下滚回当前曲；可见时自动隐藏。
+    @ViewBuilder private func nowPlayingButton(_ proxy: ScrollViewProxy) -> some View {
+        if let cur = nowPlayingId, !visibleIds.contains(cur) {
+            Button {
+                withAnimation { proxy.scrollTo(cur, anchor: .center) }
+            } label: {
+                Label("正在播放", systemImage: "music.note")
+                    .font(.caption).fontWeight(.medium)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(BrandTheme.primary.opacity(0.35), lineWidth: 1))
+                    .foregroundStyle(BrandTheme.primary)
+                    .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 10)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,6 +94,7 @@ struct CompactHomeView: View {
     // MARK: 主区：歌单 or 空状态
     @ViewBuilder private var mainArea: some View {
         if playlist.hasResult {
+            ScrollViewReader { proxy in
             List {
                 if !playlist.notice.isEmpty {
                     HStack {
@@ -98,6 +127,9 @@ struct CompactHomeView: View {
                         queue: playlist.orderedSongs,
                         onToggleSelect: { playlist.toggle(item.id) }
                     )
+                    .id(item.song.id)
+                    .onAppear { visibleIds.insert(item.song.id) }
+                    .onDisappear { visibleIds.remove(item.song.id) }
                     .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         Button { playlist.toggle(item.id) } label: {
@@ -116,6 +148,8 @@ struct CompactHomeView: View {
             .listStyle(.plain)
             .animation(.default, value: playlist.items)
             .scrollDismissesKeyboard(.interactively)
+            .overlay(alignment: .bottom) { nowPlayingButton(proxy) }
+            }
         } else {
             emptyState
         }

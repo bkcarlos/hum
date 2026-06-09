@@ -5,6 +5,35 @@ import SwiftUI
 struct PlaylistView: View {
     @EnvironmentObject private var playlist: PlaylistStore
     @EnvironmentObject private var preview: PreviewPlayer
+    @EnvironmentObject private var music: MusicAuthStore
+
+    @State private var visibleIds: Set<String> = []
+
+    /// 当前在放的曲（完整优先），用于「回到正在播放」。
+    private var nowPlayingId: String? {
+        if !music.fullCurrentId.isEmpty { return music.fullCurrentId }
+        if !preview.currentId.isEmpty { return preview.currentId }
+        return nil
+    }
+
+    /// 当前播放行滚出视野时浮现「正在播放」胶囊，点一下滚回当前曲；可见时自动隐藏。
+    @ViewBuilder private func nowPlayingButton(_ proxy: ScrollViewProxy) -> some View {
+        if let cur = nowPlayingId, !visibleIds.contains(cur) {
+            Button {
+                withAnimation { proxy.scrollTo(cur, anchor: .center) }
+            } label: {
+                Label("正在播放", systemImage: "music.note")
+                    .font(.caption).fontWeight(.medium)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(BrandTheme.primary.opacity(0.35), lineWidth: 1))
+                    .foregroundStyle(BrandTheme.primary)
+                    .shadow(color: .black.opacity(0.12), radius: 5, y: 2)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 10)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,29 +90,35 @@ struct PlaylistView: View {
     }
 
     private var list: some View {
-        List(playlist.items) { item in
-            SongRowView(
-                item: item,
-                isSelected: playlist.selected.contains(item.id),
-                queue: playlist.orderedSongs,
-                onToggleSelect: { playlist.toggle(item.id) }
-            )
-            .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                Button { playlist.toggle(item.id) } label: {
-                    Label(playlist.selected.contains(item.id) ? "取消" : "选择",
-                          systemImage: playlist.selected.contains(item.id) ? "circle" : "checkmark.circle.fill")
+        ScrollViewReader { proxy in
+            List(playlist.items) { item in
+                SongRowView(
+                    item: item,
+                    isSelected: playlist.selected.contains(item.id),
+                    queue: playlist.orderedSongs,
+                    onToggleSelect: { playlist.toggle(item.id) }
+                )
+                .id(item.song.id)
+                .onAppear { visibleIds.insert(item.song.id) }
+                .onDisappear { visibleIds.remove(item.song.id) }
+                .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    Button { playlist.toggle(item.id) } label: {
+                        Label(playlist.selected.contains(item.id) ? "取消" : "选择",
+                              systemImage: playlist.selected.contains(item.id) ? "circle" : "checkmark.circle.fill")
+                    }
+                    .tint(.green)
                 }
-                .tint(.green)
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive) { delete(item) } label: {
-                    Label("删除", systemImage: "trash")
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) { delete(item) } label: {
+                        Label("删除", systemImage: "trash")
+                    }
                 }
             }
+            .listStyle(.plain)
+            .animation(.default, value: playlist.items)
+            .overlay(alignment: .bottom) { nowPlayingButton(proxy) }
         }
-        .listStyle(.plain)
-        .animation(.default, value: playlist.items)
     }
 
     /// 左滑删除一行：移除并刷新预览队列；撤销条随 playlist.lastRemoved 出现。
