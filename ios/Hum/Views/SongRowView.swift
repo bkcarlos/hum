@@ -87,11 +87,15 @@ struct SongRowView: View {
             if activeLoading && activeDuration <= 0 {
                 ProgressView().progressViewStyle(.linear)
             } else {
-                SeekBar(
-                    progress: dragging ? dragValue : activeProgress,
-                    duration: max(activeDuration, 0.01),
-                    onScrub: { dragValue = $0; dragging = true },
-                    onCommit: { seekTo($0); dragging = false }
+                Slider(
+                    value: Binding(
+                        get: { min(dragging ? dragValue : activeProgress, max(activeDuration, 1)) },
+                        set: { dragValue = $0 }
+                    ),
+                    in: 0...max(activeDuration, 1),
+                    onEditingChanged: { editing in
+                        if editing { dragging = true } else { seekTo(dragValue); dragging = false }
+                    }
                 )
                 Text("\(fmt(dragging ? dragValue : activeProgress)) / \(fmt(activeDuration))")
                     .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
@@ -149,36 +153,5 @@ struct SongRowView: View {
             .background(color.opacity(0.15))
             .foregroundStyle(color)
             .clipShape(RoundedRectangle(cornerRadius: 3))
-    }
-}
-
-/// 紧凑进度条：3px 细轨道 + 10px 小圆点，可点/拖 seek。
-/// 取代 SwiftUI Slider —— 它的 thumb 偏大、又没有官方 API 调小。
-private struct SeekBar: View {
-    let progress: Double
-    let duration: Double
-    let onScrub: (Double) -> Void
-    let onCommit: (Double) -> Void
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = max(geo.size.width, 1)
-            let frac = min(max(progress / duration, 0), 1)
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.secondary.opacity(0.25)).frame(height: 3)
-                Capsule().fill(BrandTheme.primary).frame(width: w * frac, height: 3)
-                Circle().fill(BrandTheme.primary)
-                    .frame(width: 10, height: 10)
-                    .offset(x: min(max(w * frac - 5, 0), w - 10))
-            }
-            .frame(maxHeight: .infinity, alignment: .center)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { v in onScrub(min(max(v.location.x / w, 0), 1) * duration) }
-                    .onEnded { v in onCommit(min(max(v.location.x / w, 0), 1) * duration) }
-            )
-        }
-        .frame(height: 18)
     }
 }
