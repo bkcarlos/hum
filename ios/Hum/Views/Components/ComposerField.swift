@@ -7,13 +7,17 @@ struct ComposerField: View {
     var disabled: Bool = false
     let onSend: () -> Void
 
+    @FocusState private var focused: Bool
     private var sendDisabled: Bool { disabled || text.trimmed.isEmpty }
 
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
             TextField(placeholder, text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .lineLimit(1...4)
+                .focused($focused)
+                // 失焦折叠回单行（不输入时紧凑），聚焦展开最多 4 行。
+                .lineLimit(focused ? 1...4 : 1...1)
+                .animation(.easeInOut(duration: 0.15), value: focused)
                 .padding(.leading, 14)
                 .padding(.vertical, 9)
 
