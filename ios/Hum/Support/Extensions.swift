@@ -13,15 +13,5 @@ func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
-extension View {
-    /// 在键盘上方加一个「收起」按钮——解决多行输入框（axis:.vertical，回车=换行）
-    /// 没有收起入口的问题。只在键盘弹出时显示。
-    func keyboardDoneToolbar(_ title: String = "收起") -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button(title) { hideKeyboard() }
-            }
-        }
-    }
-}
+// 键盘收起改用手势（发送后自动收起 + 点空白/滚动收起），不再放键盘上方的 toolbar 按钮。
+// 收起动作仍走上面的 hideKeyboard()。

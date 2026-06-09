@@ -18,7 +18,9 @@ struct CompactHomeView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            // 点列表/空白区收起键盘（simultaneous 不抢占行的点歌点击）；输入区在 bottomBar 不受影响。
             mainArea
+                .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
             bottomBar
         }
         .onAppear { if examples.isEmpty { loadExamples() } }
@@ -205,6 +207,7 @@ struct CompactHomeView: View {
             .map { String($0).trimmed }
             .filter { !$0.isEmpty }
         input = ""
+        hideKeyboard()
         Task { await reco.send(text, seeds: seedList) }
     }
 

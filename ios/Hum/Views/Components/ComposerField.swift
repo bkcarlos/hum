@@ -16,7 +16,6 @@ struct ComposerField: View {
                 .lineLimit(1...4)
                 .padding(.leading, 14)
                 .padding(.vertical, 9)
-                .keyboardDoneToolbar()   // 多行框回车=换行，需显式「收起」入口
 
             Button(action: onSend) {
                 Image(systemName: "arrow.up.circle.fill").font(.title2)

@@ -42,6 +42,8 @@ struct ConversationView: View {
                 .padding()
             }
             .scrollDismissesKeyboard(.interactively)
+            // 点对话/示例区的空白也收起键盘（simultaneous 不抢占示例按钮的点击）。
+            .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
             composer
         }
         .onAppear { if examples.isEmpty { loadExamples() } }
@@ -94,6 +96,7 @@ struct ConversationView: View {
             .map { String($0).trimmed }
             .filter { !$0.isEmpty }
         input = ""
+        hideKeyboard()
         Task { await reco.send(text, seeds: seedList) }
     }
 
