@@ -31,7 +31,10 @@ declare global {
     skipToNextItem(): Promise<unknown>
     skipToPreviousItem(): Promise<unknown>
     changeToMediaAtIndex(index: number): Promise<unknown>
+    seekToTime(time: number): Promise<unknown>
     readonly playbackState: number // MusicKit.PlaybackStates (2 = playing, 3 = paused)
+    readonly currentPlaybackTime: number // 当前播放位置（秒）
+    readonly currentPlaybackDuration: number // 当前曲总时长（秒）
     readonly nowPlayingItem: { id: string } | null
     addEventListener(name: string, handler: (event: unknown) => void): void
     removeEventListener(name: string, handler: (event: unknown) => void): void

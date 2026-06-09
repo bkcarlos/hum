@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { NButton, NCheckbox, NTag } from 'naive-ui'
+import { NButton, NCheckbox, NSlider, NTag } from 'naive-ui'
 import type { PlaylistItem } from '@/stores/playlist'
 
 const props = defineProps<{
@@ -8,11 +8,26 @@ const props = defineProps<{
   selected: boolean
   current: boolean
   playing: boolean
+  loading?: boolean // 点击后到出声之间 / 缓冲（当前行才有意义；非下载文件）
+  progress?: number // 当前播放位置（秒）
+  duration?: number // 总时长（秒）
   tag?: '' | 'full' | 'preview' // 当前在放这首时的模式：完整 / 试听
   playDisabled?: boolean // 无法播放（未连 Apple Music 且无 30s 预览）
   swipe?: boolean // mobile: swipe right = select, swipe left = delete
 }>()
-const emit = defineEmits<{ toggleSelect: []; togglePlay: []; remove: [] }>()
+const emit = defineEmits<{ toggleSelect: []; togglePlay: []; seek: [t: number]; remove: [] }>()
+
+/** mm:ss 播放时间。 */
+function fmt(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
+// n-slider 单值回调可能给 number | [number, number]，归一成 number。
+function onSlider(v: number | [number, number]) {
+  emit('seek', Array.isArray(v) ? v[0] : v)
+}
 
 // --- Swipe gesture (mobile only) -------------------------------------------
 // Pointer events (not touch) so the same drag works with a mouse in the preview.
@@ -117,6 +132,24 @@ function onClickCapture(e: MouseEvent) {
         </div>
         <div class="artist">{{ item.song.artist }}</div>
         <div v-if="item.reason" class="reason">{{ item.reason }}</div>
+
+        <!-- 当前在放：缓冲时显示加载条，出声后显示进度条（可拖动 seek）。
+             @pointerdown/@click .stop 防止拖进度条时触发整行的播放切换。 -->
+        <div v-if="current" class="progress" @pointerdown.stop @click.stop>
+          <div v-if="loading && !duration" class="loadbar" aria-label="加载中">
+            <div class="loadbar-fill" />
+          </div>
+          <template v-else>
+            <n-slider
+              :value="progress ?? 0"
+              :max="Math.max(duration ?? 0, 0.1)"
+              :step="0.1"
+              :tooltip="false"
+              @update:value="onSlider"
+            />
+            <span class="time">{{ fmt(progress ?? 0) }} / {{ fmt(duration ?? 0) }}</span>
+          </template>
+        </div>
       </div>
 
       <n-button
@@ -246,5 +279,43 @@ function onClickCapture(e: MouseEvent) {
   font-size: 12px;
   color: #b0344b;
   margin-top: 2px;
+}
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.progress :deep(.n-slider) {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.time {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+}
+.loadbar {
+  flex: 1 1 auto;
+  height: 3px;
+  border-radius: 2px;
+  background: #eee;
+  overflow: hidden;
+}
+.loadbar-fill {
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: #fa2d48;
+  animation: loadslide 1s ease-in-out infinite;
+}
+@keyframes loadslide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
 }
 </style>

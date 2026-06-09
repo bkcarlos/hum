@@ -7,30 +7,52 @@ import type { Song } from '@/types'
 const audio: HTMLAudioElement | null = typeof Audio !== 'undefined' ? new Audio() : null
 const currentId = ref('')
 const playing = ref(false)
+const loading = ref(false) // 点击后到出声之间 / 缓冲中（非下载文件，纯加载态）
+const progress = ref(0) // 当前播放位置（秒）
+const duration = ref(0) // 预览时长（秒，约 30）
 let queue: Song[] = []
 
 if (audio) {
   audio.addEventListener('ended', () => next())
-  audio.addEventListener('play', () => (playing.value = true))
+  audio.addEventListener('playing', () => {
+    playing.value = true
+    loading.value = false
+  })
   audio.addEventListener('pause', () => (playing.value = false))
+  audio.addEventListener('waiting', () => (loading.value = true))
+  audio.addEventListener('timeupdate', () => (progress.value = audio.currentTime))
+  audio.addEventListener('loadedmetadata', () => (duration.value = audio.duration || 0))
+  audio.addEventListener('durationchange', () => (duration.value = audio.duration || 0))
 }
 
 function setQueue(songs: Song[]) {
   queue = songs
 }
 
-/** Toggle a song: start it, or pause it if it is the one currently playing. */
+/** Toggle a song: start it, or pause/resume if it is the one currently loaded. */
 function toggle(song: Song) {
   if (!audio || !song.previewUrl) return
-  if (currentId.value === song.id && playing.value) {
-    audio.pause()
+  if (currentId.value === song.id) {
+    if (playing.value) audio.pause()
+    else void audio.play().catch(() => (playing.value = false))
     return
   }
-  if (currentId.value !== song.id) {
-    audio.src = song.previewUrl
-    currentId.value = song.id
-  }
-  void audio.play().catch(() => (playing.value = false))
+  audio.src = song.previewUrl
+  currentId.value = song.id
+  progress.value = 0
+  duration.value = 0
+  loading.value = true
+  void audio.play().catch(() => {
+    playing.value = false
+    loading.value = false
+  })
+}
+
+/** Seek the current preview to t seconds (drag-to-seek on the progress bar). */
+function seek(t: number) {
+  if (!audio) return
+  audio.currentTime = Math.max(0, t)
+  progress.value = audio.currentTime
 }
 
 function stop() {
@@ -39,6 +61,8 @@ function stop() {
     audio.currentTime = 0
   }
   currentId.value = ''
+  loading.value = false
+  progress.value = 0
 }
 
 function currentIndex() {
@@ -57,5 +81,5 @@ function prev() {
 }
 
 export function usePreviewPlayer() {
-  return { currentId, playing, setQueue, toggle, stop, next, prev }
+  return { currentId, playing, loading, progress, duration, setQueue, toggle, seek, stop, next, prev }
 }

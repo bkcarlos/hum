@@ -26,6 +26,13 @@ const songsInOrder = computed(() => playlist.items.map((it) => it.song))
 const activeIsFull = computed(() => full.currentId.value !== '')
 const activeCurrentId = computed(() => full.currentId.value || preview.currentId.value)
 const activePlaying = computed(() => (activeIsFull.value ? full.playing.value : preview.playing.value))
+const activeLoading = computed(() => (activeIsFull.value ? full.loading.value : preview.loading.value))
+const activeProgress = computed(() => (activeIsFull.value ? full.progress.value : preview.progress.value))
+const activeDuration = computed(() => (activeIsFull.value ? full.duration.value : preview.duration.value))
+function onSeek(t: number) {
+  if (activeIsFull.value) void full.seek(t)
+  else preview.seek(t)
+}
 const currentSong = computed(
   () => songsInOrder.value.find((s) => s.id === activeCurrentId.value) ?? songsInOrder.value[0] ?? null,
 )
@@ -214,11 +221,15 @@ async function onCreate() {
           :selected="playlist.selected.has(it.song.id)"
           :current="activeCurrentId === it.song.id"
           :playing="activePlaying"
+          :loading="activeCurrentId === it.song.id && activeLoading"
+          :progress="activeCurrentId === it.song.id ? activeProgress : 0"
+          :duration="activeCurrentId === it.song.id ? activeDuration : 0"
           :tag="rowTag(it.song.id)"
           :play-disabled="playDisabled(it.song)"
           :swipe="isNarrow"
           @toggle-select="playlist.toggle(it.song.id)"
           @toggle-play="onTogglePlay(it.song)"
+          @seek="onSeek"
           @remove="playlist.removeItem(it.song.id)"
         />
       </n-scrollbar>

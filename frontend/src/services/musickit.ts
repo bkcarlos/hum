@@ -111,3 +111,30 @@ export async function onNowPlayingChange(cb: (id: string) => void): Promise<() =
   mk.addEventListener('nowPlayingItemDidChange', handler)
   return () => mk.removeEventListener('nowPlayingItemDidChange', handler)
 }
+
+/** Seek full playback to t seconds (drag-to-seek on the progress bar). */
+export async function seekFull(t: number): Promise<void> {
+  const mk = await ensureMusicKit()
+  await mk.seekToTime(Math.max(0, t))
+}
+
+// PlaybackStates that mean "not yet audible" → show a loading indicator (no file download).
+const MK_LOADING = new Set([1, 6, 8, 9]) // loading / seeking / waiting / stalled
+
+/** Subscribe to loading-state changes; calls cb(isLoading). Returns unsubscribe. */
+export async function onFullLoadingChange(cb: (loading: boolean) => void): Promise<() => void> {
+  const mk = await ensureMusicKit()
+  const handler = () => cb(MK_LOADING.has(mk.playbackState))
+  mk.addEventListener('playbackStateDidChange', handler)
+  return () => mk.removeEventListener('playbackStateDidChange', handler)
+}
+
+/** Subscribe to playback-time changes; calls cb(time, duration) in seconds. Returns unsubscribe. */
+export async function onPlaybackTimeChange(
+  cb: (time: number, duration: number) => void,
+): Promise<() => void> {
+  const mk = await ensureMusicKit()
+  const handler = () => cb(mk.currentPlaybackTime ?? 0, mk.currentPlaybackDuration ?? 0)
+  mk.addEventListener('playbackTimeDidChange', handler)
+  return () => mk.removeEventListener('playbackTimeDidChange', handler)
+}
