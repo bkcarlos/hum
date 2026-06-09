@@ -23,9 +23,9 @@ const (
 //   - Message is ALWAYS safe to show ANY user: it never contains the API key, nor
 //     the (possibly server-side) Base URL, nor raw upstream internals.
 //   - Detail holds the raw upstream detail (the request URL / response body snippet)
-//     for SERVER LOGS and BYOK self-service ONLY. It MUST NOT reach free-tier users,
-//     where the Base URL is the operator's own infrastructure. The handler
-//     (writeLLMError) logs Detail always but only echoes it to BYOK requests.
+//     for SERVER LOGS ONLY. It is NEVER shown to any user — not free-tier (the Base
+//     URL is the operator's infra) and not BYOK (the user's own gateway URL shouldn't
+//     surface in error UI either). The handler (writeLLMError) logs Detail, never echoes it.
 type APIError struct {
 	Kind     ErrorKind
 	Status   int
@@ -42,8 +42,8 @@ func (e *APIError) Error() string {
 }
 
 // networkError wraps a transport-level failure (DNS, TLS, timeout, region block).
-// The raw error contains the request URL, so it goes into Detail (logs/BYOK), never
-// the user-facing Message.
+// The raw error contains the request URL, so it goes into Detail (server logs only),
+// never the user-facing Message.
 func networkError(p ProviderType, err error) *APIError {
 	return &APIError{
 		Kind:     ErrNetwork,
@@ -55,7 +55,7 @@ func networkError(p ProviderType, err error) *APIError {
 
 // normalizeHTTPError maps a non-2xx response to a friendly, classified error.
 // body is the (truncated) response payload — used to refine the message and, for
-// the opaque cases, kept in Detail (logs/BYOK) rather than the user Message.
+// the opaque cases, kept in Detail (server logs only) rather than the user Message.
 func normalizeHTTPError(p ProviderType, status int, body []byte) *APIError {
 	snippet := strings.TrimSpace(string(body))
 	if len(snippet) > 500 {

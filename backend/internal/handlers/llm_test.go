@@ -10,10 +10,9 @@ import (
 	"github.com/bkcarlos/hum/internal/llm"
 )
 
-// The server-side LLM Base URL must never leak to free-tier users (no BYOK key),
-// but is fine to echo back to BYOK users (it's their own config). Detail always
-// goes to logs regardless.
-func TestWriteLLMError_ScrubsServerDetailForFreeTier(t *testing.T) {
+// 原始上游细节（含 Base URL / 响应体）绝不外露给任何用户——免费档（服务端自有
+// Base URL，红线）与 BYOK（用户自己的私有网关地址）都只看归一化文案，Detail 仅进日志。
+func TestWriteLLMError_NeverLeaksDetail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	apiErr := &llm.APIError{
 		Kind:     llm.ErrNetwork,
@@ -22,25 +21,28 @@ func TestWriteLLMError_ScrubsServerDetailForFreeTier(t *testing.T) {
 		Detail:   `Post "https://api2.tabcode.cc/claude/office2/v1/messages": context deadline exceeded`,
 	}
 
-	// 免费档（无 X-LLM-Api-Key）→ 绝不泄露服务端 Base URL。
+	assertClean := func(t *testing.T, body string) {
+		t.Helper()
+		if strings.Contains(body, "tabcode.cc") {
+			t.Fatalf("leaked Base URL / detail to user: %s", body)
+		}
+		if !strings.Contains(body, "无法连接到该服务商") {
+			t.Fatalf("missing clean message: %s", body)
+		}
+	}
+
+	// 免费档（无 X-LLM-Api-Key）。
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Request = httptest.NewRequest("POST", "/api/suggest", nil)
 	writeLLMError(c, apiErr)
-	if strings.Contains(w.Body.String(), "tabcode.cc") {
-		t.Fatalf("free-tier leaked server Base URL: %s", w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "无法连接到该服务商") {
-		t.Fatalf("free-tier missing clean message: %s", w.Body.String())
-	}
+	assertClean(t, w.Body.String())
 
-	// BYOK（带 X-LLM-Api-Key）→ 回显细节（用户自己的 Base URL）。
+	// BYOK（带 X-LLM-Api-Key）——同样不回显 Base URL / 细节。
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)
 	c2.Request = httptest.NewRequest("POST", "/api/suggest", nil)
 	c2.Request.Header.Set(llmAPIKeyHeader, "sk-user-key")
 	writeLLMError(c2, apiErr)
-	if !strings.Contains(w2.Body.String(), "tabcode.cc") {
-		t.Fatalf("BYOK should echo detail: %s", w2.Body.String())
-	}
+	assertClean(t, w2.Body.String())
 }

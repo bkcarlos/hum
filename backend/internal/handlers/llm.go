@@ -190,13 +190,10 @@ func writeLLMError(c *gin.Context, err error) {
 				"kind", apiErr.Kind, "status", apiErr.Status,
 				"provider", apiErr.Provider, "detail", apiErr.Detail)
 		}
-		// 仅当本请求带了用户自己的 key（BYOK）时才回显细节——那是用户自己配的 Base URL。
-		// 免费档用的是服务端自有 Base URL，绝不外露（红线）。
-		msg := apiErr.Message
-		if apiErr.Detail != "" && strings.TrimSpace(c.GetHeader(llmAPIKeyHeader)) != "" {
-			msg += "（" + apiErr.Detail + "）"
-		}
-		httpx.Fail(c, statusForKind(apiErr.Kind), string(apiErr.Kind), msg)
+		// 原始细节（含 Base URL / 响应体）绝不外露给用户——只进上面的服务端日志。
+		// BYOK 也不回显（自己的私有网关地址同样不该出现在错误 UI）；排查 Base URL
+		// 去配置页 / 诊断日志看。免费档同理（服务端 Base URL 是红线）。
+		httpx.Fail(c, statusForKind(apiErr.Kind), string(apiErr.Kind), apiErr.Message)
 		return
 	}
 	// 未分类错误：原文可能含 URL，只进日志，给用户清洁文案。
