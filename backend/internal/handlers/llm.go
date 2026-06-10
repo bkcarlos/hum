@@ -117,6 +117,12 @@ func (h *Handlers) Rank(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, "bad_request", "候选池为空，无法排序。")
 		return
 	}
+	// Cap the pool before it is fed verbatim into the LLM prompt. The real pool is
+	// built at ≤ maxPoolSize; this bounds prompt size (and thus the server's token
+	// cost on the free tier) against a client that posts an oversized candidate list.
+	if len(body.Candidates) > maxPoolSize {
+		body.Candidates = body.Candidates[:maxPoolSize]
+	}
 	p, refund, ok := h.resolveProvider(c, body.LLM, true)
 	if !ok {
 		return

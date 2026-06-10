@@ -1,9 +1,25 @@
 package cache
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
+
+// Set must keep the map bounded under a flood of distinct keys (no unbounded
+// growth from, e.g., many unique search terms within the TTL window).
+func TestTTL_EvictsAtCapacity(t *testing.T) {
+	c := NewTTL[int](time.Minute)
+	for i := 0; i < maxEntries+500; i++ {
+		c.Set(strconv.Itoa(i), i)
+	}
+	c.mu.Lock()
+	n := len(c.m)
+	c.mu.Unlock()
+	if n > maxEntries {
+		t.Fatalf("cache holds %d entries, want ≤ %d", n, maxEntries)
+	}
+}
 
 func TestTTL_GetSet(t *testing.T) {
 	c := NewTTL[string](time.Minute)

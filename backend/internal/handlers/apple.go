@@ -18,6 +18,7 @@ const (
 	perTermLimit       = 25  // Apple catalog search max results per request
 	maxPoolSize        = 150 // candidate pool cap (F4: target 50–150, de-duplicated)
 	resolveConcurrency = 8   // max concurrent Apple lookups when resolving LLM suggestions (Option A)
+	maxSearchTerms     = 12  // cap derived search terms: a crafted intent can list many genres/seeds
 )
 
 // DeveloperToken (GET /api/apple/developer-token) returns the JWT MusicKit JS
@@ -61,16 +62,22 @@ func (h *Handlers) Search(c *gin.Context) {
 	}
 
 	terms := buildSearchTerms(body.Intent)
+	if len(terms) > maxSearchTerms {
+		terms = terms[:maxSearchTerms] // bound outbound Apple calls per request
+	}
 
-	// Fan the per-term searches out concurrently; collect in term order so dedup
-	// (and which songs survive the cap) stay deterministic.
+	// Fan the per-term searches out concurrently (bounded), collecting in term
+	// order so dedup (and which songs survive the cap) stay deterministic.
 	results := make([][]applemusic.Song, len(terms))
 	errs := make([]error, len(terms))
+	sem := make(chan struct{}, resolveConcurrency)
 	var wg sync.WaitGroup
 	for i, term := range terms {
 		wg.Add(1)
 		go func(i int, term string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			results[i], errs[i] = h.apple.SearchSongs(c.Request.Context(), body.Storefront, term, perTermLimit)
 		}(i, term)
 	}

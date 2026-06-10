@@ -15,6 +15,11 @@ type entry[T any] struct {
 	exp time.Time
 }
 
+// maxEntries bounds the map so a flood of distinct keys (e.g. many unique search
+// terms within the TTL window) can't grow memory without limit. When hit, Set
+// first drops expired entries and, if still full, evicts arbitrary ones.
+const maxEntries = 10_000
+
 // TTL is a map-backed cache with a single expiry duration for all entries.
 // A non-positive ttl disables caching entirely (Set is a no-op, Get always misses).
 type TTL[T any] struct {
@@ -54,5 +59,26 @@ func (c *TTL[T]) Set(key string, val T) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, exists := c.m[key]; !exists && len(c.m) >= maxEntries {
+		c.evictLocked()
+	}
 	c.m[key] = entry[T]{val: val, exp: c.now().Add(c.ttl)}
+}
+
+// evictLocked frees space when the map is at capacity: it first deletes expired
+// entries, then — if still full — drops arbitrary ones (Go's randomized map
+// iteration order makes that eviction roughly fair). Caller must hold c.mu.
+func (c *TTL[T]) evictLocked() {
+	now := c.now()
+	for k, e := range c.m {
+		if now.After(e.exp) {
+			delete(c.m, k)
+		}
+	}
+	for k := range c.m {
+		if len(c.m) < maxEntries {
+			break
+		}
+		delete(c.m, k)
+	}
 }
