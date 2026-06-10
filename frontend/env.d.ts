@@ -19,6 +19,7 @@ declare global {
   interface MusicKitInstance {
     authorize(): Promise<string> // resolves to the Music User Token
     unauthorize(): Promise<void>
+    developerToken: string // writable: swapped in place when the token nears expiry
     readonly storefrontId: string
     readonly isAuthorized: boolean
 

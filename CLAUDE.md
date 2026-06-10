@@ -70,12 +70,13 @@ WEB_DIR="$PWD/frontend/dist" GIN_MODE=release PORT=8080 go -C backend run ./cmd/
 | `APPLE_TEAM_ID` / `APPLE_KEY_ID` | — | Apple 开发者凭证 |
 | `APPLE_PRIVATE_KEY` | — | .p8 的 PEM 内容（云平台首选；支持 `\n` 转义粘贴） |
 | `APPLE_PRIVATE_KEY_PATH` | — | 或本地 .p8 文件路径 |
-| `APPLE_TOKEN_TTL_HOURS` | 4320 | Developer Token 有效期 |
+| `APPLE_TOKEN_TTL_HOURS` | 24 | Developer Token 有效期（短期化降泄露窗口；前端 `musickit.ts` 临期自动重取） |
 | `APPLE_API_BASE` | `https://api.music.apple.com` | 测试/区域代理可覆盖 |
 | `PORT` | 8080 | 多数云平台会注入自己的 PORT |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | 单服务同源可不设 |
 | `UPSTREAM_TIMEOUT_SECONDS` | 30 | 上游 HTTP 超时 |
 | `SEARCH_CACHE_TTL_SECONDS` | 600 | 检索缓存（0 关闭） |
+| `TRUSTED_PROXY_HOPS` | 0 | 前置「追加型」可信代理数；Cloud Run 设 `1`（取 XFF 末位真实客户端 IP，供 per-IP 限流/日志，抗伪造） |
 | `WEB_DIR` | — | 设了就托管前端静态文件（单服务） |
 | `GIN_MODE` | release | 设 `debug` 回到 verbose |
 

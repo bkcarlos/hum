@@ -47,6 +47,13 @@ type Config struct {
 	RateLimitRPS   int
 	RateLimitBurst int
 
+	// TrustedProxyHops is how many trusted proxies append to X-Forwarded-For in
+	// front of the app. 0 (default) = none: the direct peer IP is the client (local
+	// dev). On Cloud Run set 1 — Google's front end appends the real client IP as
+	// the LAST XFF entry, so taking that entry yields the real, spoofing-resistant
+	// client IP for per-IP rate limiting (a client-supplied XFF is to its left).
+	TrustedProxyHops int
+
 	// ── Free tier (Sign in with Apple + server default key, gated by quota) ──
 	// All of DefaultLLMKey/SessionSecret/AppleBundleID/DefaultLLMModel must be set
 	// for the free tier to turn on (see FreeTierConfigured); otherwise suggest/rank
@@ -96,7 +103,7 @@ func Load() (*Config, error) {
 		AppleKeyID:          os.Getenv("APPLE_KEY_ID"),
 		ApplePrivateKeyPath: os.Getenv("APPLE_PRIVATE_KEY_PATH"),
 		ApplePrivateKey:     os.Getenv("APPLE_PRIVATE_KEY"),
-		AppleTokenTTL:       time.Duration(envInt("APPLE_TOKEN_TTL_HOURS", 4320)) * time.Hour,
+		AppleTokenTTL:       time.Duration(envInt("APPLE_TOKEN_TTL_HOURS", 24)) * time.Hour,
 		AppleAPIBase:        envStr("APPLE_API_BASE", "https://api.music.apple.com"),
 		Port:                envStr("PORT", "8080"),
 		CORSAllowedOrigins:  splitCSV(envStr("CORS_ALLOWED_ORIGINS", "http://localhost:5173")),
@@ -105,6 +112,7 @@ func Load() (*Config, error) {
 		SearchCacheTTL:      time.Duration(envInt("SEARCH_CACHE_TTL_SECONDS", 600)) * time.Second,
 		RateLimitRPS:        envInt("RATE_LIMIT_RPS", 10),
 		RateLimitBurst:      envInt("RATE_LIMIT_BURST", 30),
+		TrustedProxyHops:    envInt("TRUSTED_PROXY_HOPS", 0),
 
 		DefaultLLMKey:       os.Getenv("DEFAULT_LLM_API_KEY"),
 		DefaultLLMProvider:  envStr("DEFAULT_LLM_PROVIDER", "openai-compat"),

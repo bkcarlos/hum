@@ -25,6 +25,16 @@ import (
 	"github.com/bkcarlos/hum/internal/quota"
 )
 
+// maxRequestBytes caps any /api request body. The largest legitimate payload is
+// /rank with a ≤150-song candidate pool, far below this; oversized bodies fail the
+// JSON bind with a clean 400.
+const maxRequestBytes = 1 << 20 // 1 MiB
+
+// minSessionSecretLen is the floor for SESSION_SECRET. Session tokens are HS256;
+// a weak secret is brute-forceable and lets an attacker forge any user's (or an
+// admin's) session, so a too-short secret fails closed: auth/admin stay OFF.
+const minSessionSecretLen = 16
+
 func main() {
 	// 生产用 JSON 结构化日志：Cloud Logging 据此把 request 字段(method/path/status/
 	// request_id)解析成可查字段 + 正确映射 severity。GIN_MODE=debug 保留可读文本(本地开发)。
@@ -74,7 +84,11 @@ func main() {
 	// _KEY + DEFAULT_LLM_MODEL (cfg.FreeTierConfigured); without them, login/admin
 	// still work and only suggest/rank's server-key path is unavailable.
 	authOn := false
-	if cfg.AuthConfigured() {
+	if cfg.AuthConfigured() && len(cfg.SessionSecret) < minSessionSecretLen {
+		// Fail closed: a weak HMAC secret would let sessions be forged. Keep BYOK
+		// working; login/admin/free-tier stay off until a stronger secret is set.
+		slog.Error("auth DISABLED: SESSION_SECRET too short — set a long random value (≥16 chars, e.g. `openssl rand -base64 32`)", "len", len(cfg.SessionSecret))
+	} else if cfg.AuthConfigured() {
 		seed := quota.Config{
 			Enabled:           cfg.FreeTierEnabled,
 			PerUserDailyLimit: cfg.FreeTierPerUser,
@@ -113,6 +127,10 @@ func main() {
 
 	r := gin.New()
 	_ = r.SetTrustedProxies(nil) // don't trust any proxy headers by default
+	// Resolve the client IP from X-Forwarded-For when behind a trusted appending
+	// proxy (Cloud Run: TRUSTED_PROXY_HOPS=1), so per-IP rate limiting + logs see
+	// the real caller instead of the platform proxy IP.
+	middleware.SetTrustedProxyHops(cfg.TrustedProxyHops)
 	r.Use(gin.Recovery())
 	r.Use(middleware.Logger())
 	r.Use(cors.New(cors.Config{
@@ -126,6 +144,7 @@ func main() {
 
 	api := r.Group("/api")
 	api.Use(middleware.NewRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst).Middleware())
+	api.Use(middleware.BodyLimit(maxRequestBytes)) // bound per-request body (e.g. /rank candidates)
 	{
 		api.GET("/health", func(c *gin.Context) { httpx.OK(c, gin.H{"status": "ok"}) })
 

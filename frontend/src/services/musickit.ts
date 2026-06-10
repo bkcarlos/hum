@@ -7,6 +7,15 @@ const MUSICKIT_CDN = 'https://js-cdn.music.apple.com/musickit/v3/musickit.js'
 
 let scriptPromise: Promise<void> | null = null
 let configurePromise: Promise<MusicKitInstance> | null = null
+let tokenExpiryMs = 0 // epoch ms when the current Developer Token expires (0 = unknown)
+
+// Refresh the Developer Token this long before it actually expires.
+const TOKEN_REFRESH_SKEW_MS = 5 * 60_000
+
+const APP_INFO = {
+  name: import.meta.env.VITE_APP_NAME ?? 'Hum',
+  build: import.meta.env.VITE_APP_BUILD ?? '0.5.0',
+}
 
 function loadScript(): Promise<void> {
   if (scriptPromise) return scriptPromise
@@ -23,21 +32,31 @@ function loadScript(): Promise<void> {
   return scriptPromise
 }
 
-/** Ensure MusicKit is loaded and configured with a fresh Developer Token. */
+/** Ensure MusicKit is loaded and configured, refreshing the Developer Token
+ *  before it expires. The backend now mints short-lived (~24h) tokens, so a
+ *  long-open tab must re-fetch one rather than start 401-ing on catalog calls. */
 export async function ensureMusicKit(): Promise<MusicKitInstance> {
-  if (configurePromise) return configurePromise
-  configurePromise = (async () => {
-    const { token } = await getDeveloperToken()
-    await loadScript()
-    return window.MusicKit.configure({
-      developerToken: token,
-      app: {
-        name: import.meta.env.VITE_APP_NAME ?? 'Hum',
-        build: import.meta.env.VITE_APP_BUILD ?? '0.5.0',
-      },
-    })
-  })()
-  return configurePromise
+  if (!configurePromise) {
+    configurePromise = (async () => {
+      const { token, expiresAt } = await getDeveloperToken()
+      tokenExpiryMs = Date.parse(expiresAt) || 0
+      await loadScript()
+      return window.MusicKit.configure({ developerToken: token, app: APP_INFO })
+    })()
+    return configurePromise
+  }
+  const mk = await configurePromise
+  // Re-fetch + swap the token in place (non-disruptive) once it nears expiry.
+  if (tokenExpiryMs && Date.now() > tokenExpiryMs - TOKEN_REFRESH_SKEW_MS) {
+    try {
+      const { token, expiresAt } = await getDeveloperToken()
+      tokenExpiryMs = Date.parse(expiresAt) || 0
+      mk.developerToken = token
+    } catch {
+      // best-effort: keep the still-valid-for-now token; the next call retries
+    }
+  }
+  return mk
 }
 
 export interface AppleAuthResult {
