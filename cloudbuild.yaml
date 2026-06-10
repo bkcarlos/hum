@@ -53,5 +53,5 @@ steps:
       - --memory=512Mi
       - --min-instances=${_MIN_INSTANCES}
       - --max-instances=3
-      - --set-env-vars=APPLE_TEAM_ID=${_APPLE_TEAM_ID},APPLE_KEY_ID=${_APPLE_KEY_ID},GIN_MODE=release
+      - --set-env-vars=APPLE_TEAM_ID=${_APPLE_TEAM_ID},APPLE_KEY_ID=${_APPLE_KEY_ID},GIN_MODE=release,TRUSTED_PROXY_HOPS=1
       - --set-secrets=APPLE_PRIVATE_KEY=${_SECRET}:latest

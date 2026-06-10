@@ -55,7 +55,7 @@ gcloud run deploy "$SERVICE" \
   --port 8080 \
   --cpu 1 --memory 512Mi \
   --min-instances "$MIN_INSTANCES" --max-instances 3 \
-  --set-env-vars "APPLE_TEAM_ID=${APPLE_TEAM_ID},APPLE_KEY_ID=${APPLE_KEY_ID},GIN_MODE=release" \
+  --set-env-vars "APPLE_TEAM_ID=${APPLE_TEAM_ID},APPLE_KEY_ID=${APPLE_KEY_ID},GIN_MODE=release,TRUSTED_PROXY_HOPS=1" \
   --set-secrets "APPLE_PRIVATE_KEY=${SECRET}:latest"
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"

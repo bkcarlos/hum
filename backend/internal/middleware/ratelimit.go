@@ -72,7 +72,7 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		return func(c *gin.Context) { c.Next() }
 	}
 	return func(c *gin.Context) {
-		if !rl.allow(c.ClientIP(), time.Now()) {
+		if !rl.allow(clientIP(c), time.Now()) {
 			httpx.Fail(c, http.StatusTooManyRequests, "rate_limit", "请求过于频繁，请稍后再试。")
 			c.Abort()
 			return

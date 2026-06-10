@@ -39,7 +39,7 @@ func Logger() gin.HandlerFunc {
 			"path", path,
 			"status", c.Writer.Status(),
 			"latency_ms", time.Since(start).Milliseconds(),
-			"ip", c.ClientIP(),
+			"ip", clientIP(c),
 		}
 		if rid != "" {
 			args = append(args, "request_id", rid)
