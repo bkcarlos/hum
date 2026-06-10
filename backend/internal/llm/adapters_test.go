@@ -7,10 +7,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+// TestMain relaxes the SSRF guard for the whole package so the adapter tests can
+// dial httptest servers on 127.0.0.1 (loopback is blocked in production).
+func TestMain(m *testing.M) {
+	DisableSSRFGuard = true
+	os.Exit(m.Run())
+}
 
 // ── shared fixtures ─────────────────────────────────────────────────────
 const intentJSON = `{"moods":["慵懒"],"genres":["爵士"],"instruments":["钢琴"],"tempo":"slow","keywords":["雨天"],"seed_artists":[]}`

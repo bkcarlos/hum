@@ -18,7 +18,7 @@ type anthropic struct {
 const anthropicVersion = "2023-06-01"
 
 func newAnthropic(cfg Config) Provider {
-	p := &anthropic{cfg: cfg, http: &http.Client{Timeout: cfg.Timeout}}
+	p := &anthropic{cfg: cfg, http: safeHTTPClient(cfg.Timeout)}
 	p.core = core{chat: p.chat}
 	return p
 }

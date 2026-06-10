@@ -20,7 +20,7 @@ type gemini struct {
 }
 
 func newGemini(cfg Config) Provider {
-	p := &gemini{cfg: cfg, http: &http.Client{Timeout: cfg.Timeout}}
+	p := &gemini{cfg: cfg, http: safeHTTPClient(cfg.Timeout)}
 	p.core = core{chat: p.chat}
 	return p
 }

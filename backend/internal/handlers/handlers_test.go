@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -16,6 +17,13 @@ import (
 	"github.com/bkcarlos/hum/internal/config"
 	"github.com/bkcarlos/hum/internal/llm"
 )
+
+// TestMain relaxes the LLM SSRF guard package-wide: these handler tests point the
+// real llm client at httptest servers on 127.0.0.1, which the guard blocks in prod.
+func TestMain(m *testing.M) {
+	llm.DisableSSRFGuard = true
+	os.Exit(m.Run())
+}
 
 // ── test scaffolding ────────────────────────────────────────────────────
 type fakeApple struct {

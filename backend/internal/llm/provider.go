@@ -133,6 +133,9 @@ type Provider interface {
 // New builds the adapter for cfg.Provider, applying default Base URLs/models.
 func New(cfg Config) (Provider, error) {
 	cfg = withDefaults(cfg)
+	if err := validateBaseURL(cfg.BaseURL); err != nil {
+		return nil, err
+	}
 	switch cfg.Provider {
 	case ProviderOpenAICompat:
 		return newOpenAICompat(cfg), nil

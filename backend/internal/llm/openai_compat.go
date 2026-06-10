@@ -21,7 +21,7 @@ type openAICompat struct {
 }
 
 func newOpenAICompat(cfg Config) Provider {
-	p := &openAICompat{cfg: cfg, http: &http.Client{Timeout: cfg.Timeout}}
+	p := &openAICompat{cfg: cfg, http: safeHTTPClient(cfg.Timeout)}
 	p.core = core{chat: p.chat}
 	return p
 }
